@@ -32,15 +32,15 @@ nonisolated enum BedrockRequestBuilder {
     }
     //    ConverseInput
     //    additionalModelRequestFields: Smithy.Document? = nil,
-    //    additionalModelResponseFieldPaths: [Swift.String]? = nil,
+    //    additionalModelResponseFieldPaths: [String]? = nil,
     //    guardrailConfig: BedrockRuntimeClientTypes.GuardrailConfiguration? = nil,
     //    inferenceConfig: BedrockRuntimeClientTypes.InferenceConfiguration? = nil,
     //    messages: [BedrockRuntimeClientTypes.Message]? = nil,
-    //    modelId: Swift.String? = nil,
+    //    modelId: String? = nil,
     //    outputConfig: BedrockRuntimeClientTypes.OutputConfig? = nil,
     //    performanceConfig: BedrockRuntimeClientTypes.PerformanceConfiguration? = nil,
-    //    promptVariables: [Swift.String: BedrockRuntimeClientTypes.PromptVariableValues]? = nil,
-    //    requestMetadata: [Swift.String: Swift.String]? = nil,
+    //    promptVariables: [String: BedrockRuntimeClientTypes.PromptVariableValues]? = nil,
+    //    requestMetadata: [String: String]? = nil,
     //    serviceTier: BedrockRuntimeClientTypes.ServiceTier? = nil,
     //    system: [BedrockRuntimeClientTypes.SystemContentBlock]? = nil,
     //    toolConfig: BedrockRuntimeClientTypes.ToolConfiguration? = nil
@@ -178,10 +178,15 @@ nonisolated enum BedrockRequestBuilder {
         return config
     }
 
+    // TODO: Add cache points based on the cache config
     static func buildConverseInput(
         from request: LanguageModelExecutorGenerationRequest,
         model: BedrockLanguageModel
     ) throws -> (ConverseInput, [ToolNameMap]) {
+        let executorConfiguration = model.executorConfiguration
+        // https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html#prompt-caching-simplified
+        let cacheConfig = executorConfiguration.cacheConfig
+
         /// Strict JSON Schema via constrained decoding (`output_config.format`) —
         /// the model cannot emit a token that violates the schema. Compatible with
         /// thinking; the response streams as plain text deltas containing valid
@@ -211,13 +216,13 @@ nonisolated enum BedrockRequestBuilder {
         var toolNameMap: [ToolNameMap] = []
         if let config = try buildToolConfig(
             tools: request.enabledToolDefinitions,
-            callingMode: request.generationOptions.toolCallingMode
+            callingMode: request.generationOptions.toolCallingMode,
+            cacheConfig: cacheConfig?.toolsTTL
         ) {
             input.toolConfig = config.0
             toolNameMap = config.1
         }
 
-        let executorConfiguration = model.executorConfiguration
         input.modelId = executorConfiguration.modelId
         input.guardrailConfig = buildGuardrailConfig(
             from: executorConfiguration
@@ -292,9 +297,23 @@ nonisolated enum BedrockRequestBuilder {
         }
         // print("messages: ", messages)
         messages = groupMessagesByRole(messages: messages)
+        messages = addMessageCache(
+            messages: messages,
+            cacheConfig: cacheConfig?.messagesTTL
+        )
+
         input.messages = messages
+
         if !system.isEmpty {
             input.system = system
+
+            if let cachePoint = buildCachePoint(
+                ttl: cacheConfig?.systemPromptTTL
+            ) {
+                input.system?.append(
+                    .cachepoint(cachePoint)
+                )
+            }
         }
 
         if !additionalModelRequestFields.isEmpty {
@@ -310,6 +329,61 @@ nonisolated enum BedrockRequestBuilder {
         }
 
         return (input, toolNameMap)
+    }
+
+    /**
+     * Ensure the last user message carries exactly one cache point.
+     *
+     * A cache point already present in the last user message is honored where it sits rather than
+     * replaced: a caller places one to mark where its reusable prefix ends, ahead of content that is
+     * rebuilt every call. Moving it to the end of the message would put that per-call content inside
+     * the cached prefix, so every request would write a new entry and none would ever read one.
+     *
+     * Cache points in earlier messages are still removed, so they cannot accumulate one per turn
+     * against the provider's cache-point budget.
+     *
+     * @param messages - List of messages to inject cache point into (modified in place)
+     * @param ttl - TTL for the injected cache point. Falsy leaves the Bedrock default.
+     */
+    private static func addMessageCache(
+        messages: [BedrockRuntimeClientTypes.Message],
+        cacheConfig: BedrockRuntimeClientTypes.CacheTTL?
+    ) -> [BedrockRuntimeClientTypes.Message] {
+        guard let cachePoint = buildCachePoint(ttl: cacheConfig) else {
+            return messages
+        }
+
+        guard
+            let lastUserIndex = messages.lastIndex(where: { $0.role == .user })
+        else {
+            return messages
+        }
+
+        var messages = messages
+        for (index, message) in messages.enumerated() {
+            var message = message
+            if index == lastUserIndex {
+                if message.content?.contains(where: { $0.isCachePoint })
+                    == false
+                {
+                    // NOTE:
+                    // the problem mentioned in strands-ts of *placing cache point after PDF document causes ValidationException from Bedrock* might still exist.
+                    // If so, the cache point needs to be placed before the last PDF.
+                    // Ref: strands-ts/src/models/bedrock.ts line 1135 within `_injectCachePoint`
+                    message.content?.append(.cachepoint(cachePoint))
+                    messages[index] = message
+                }
+
+                continue
+            }
+
+            // remove cache points in earlier messages,
+            // so they cannot accumulate one per turn against the provider's cache-point budget.
+            message.content = message.content?.filter({ !$0.isCachePoint })
+            messages[index] = message
+        }
+
+        return messages
     }
 
     //ValidationException(properties: AWSBedrockRuntime.ValidationException.Properties(message: Optional("2 validation errors detected: Value \'Count Tool\' at \'toolConfig.tools.1.member.toolSpec.name\' failed to satisfy constraint: Member must satisfy regular expression pattern: [a-zA-Z0-9_-]+; Value at \'system.1.member.text\' failed to satisfy constraint: Member must have length greater than or equal to 1")), httpResponse:
@@ -342,20 +416,42 @@ nonisolated enum BedrockRequestBuilder {
 
     private static func buildToolConfig(
         tools: [Transcript.ToolDefinition],
-        callingMode: GenerationOptions.ToolCallingMode?
+        callingMode: GenerationOptions.ToolCallingMode?,
+        cacheConfig: BedrockRuntimeClientTypes.CacheTTL?
     ) throws -> (BedrockRuntimeClientTypes.ToolConfiguration, [ToolNameMap])? {
         guard !tools.isEmpty, callingMode != .disallowed else {
             return nil
         }
-        let tools = try tools.map({
+        let toolsConfigs = try tools.map({
             try tool(from: $0)
         })
+
+        var tools = toolsConfigs.map(\.0)
+
+        if let cachePoint = buildCachePoint(ttl: cacheConfig) {
+            tools.append(
+                BedrockRuntimeClientTypes.Tool.cachepoint(cachePoint)
+            )
+        }
+
         let choice = toolChoice(for: callingMode)
         return (
             BedrockRuntimeClientTypes.ToolConfiguration(
                 toolChoice: choice,
-                tools: tools.map(\.0)
-            ), tools.map(\.1)
+                tools: tools
+            ), toolsConfigs.map(\.1)
+        )
+    }
+
+    private static func buildCachePoint(
+        ttl: BedrockRuntimeClientTypes.CacheTTL?
+    ) -> BedrockRuntimeClientTypes.CachePointBlock? {
+        guard let ttl else {
+            return nil
+        }
+        return BedrockRuntimeClientTypes.CachePointBlock(
+            ttl: ttl,
+            type: .default
         )
     }
 
@@ -416,16 +512,6 @@ nonisolated enum BedrockRequestBuilder {
         }
         .joined(separator: separator)
     }
-
-    //        public enum SystemContentBlock: Swift.Sendable {
-    //            /// A system prompt for the model.
-    //            case text(Swift.String)
-    //            /// A content block to assess with the guardrail. Use with the [Converse](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html) or [ConverseStream](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ConverseStream.html) API operations. For more information, see Use a guardrail with the Converse API in the Amazon Bedrock User Guide.
-    //            case guardcontent(BedrockRuntimeClientTypes.GuardrailConverseContentBlock)
-    //            /// CachePoint to include in the system prompt.
-    //            case cachepoint(BedrockRuntimeClientTypes.CachePointBlock)
-    //            case sdkUnknown(Swift.String)
-    //        }
 
     private static func systemContentBlock(
         from instructions: Transcript.Instructions
@@ -684,6 +770,15 @@ nonisolated enum BedrockRequestBuilder {
 
 }
 
+nonisolated extension BedrockRuntimeClientTypes.ContentBlock {
+    var isCachePoint: Bool {
+        if case .cachepoint(_) = self {
+            return true
+        }
+        return false
+    }
+}
+
 nonisolated extension String {
     public static let enableDocumentCitationKey = "enableCitation"
     public static let documentNameKey = "name"
@@ -894,48 +989,48 @@ nonisolated package struct ToolNameMap {
 public struct DocumentCitation {
 
     @Generable()
-    public enum CitationLocation: Swift.Sendable {
+    public enum CitationLocation: Sendable {
         /// The web URL that was cited for this reference.
         case web(domain: String?, url: String?)
         /// The character-level location within the document where the cited content is found.
         case documentchar(
             /// The index of the document within the array of documents provided in the request.
-            documentIndex: Swift.Int?,
+            documentIndex: Int?,
             /// The ending character position of the cited content within the document.
-            end: Swift.Int?,
+            end: Int?,
             /// The starting character position of the cited content within the document.
-            start: Swift.Int?
+            start: Int?
         )
         /// The page-level location within the document where the cited content is found.
         case documentpage(
             /// The index of the document within the array of documents provided in the request.
-            documentIndex: Swift.Int?,
+            documentIndex: Int?,
             /// The ending page number of the cited content within the document.
-            end: Swift.Int?,
+            end: Int?,
             /// The starting page number of the cited content within the document.
-            start: Swift.Int?
+            start: Int?
         )
         /// The chunk-level location within the document where the cited content is found, typically used for documents that have been segmented into logical chunks.
         case documentchunk(
             /// The index of the document within the array of documents provided in the request.
-            documentIndex: Swift.Int?,
+            documentIndex: Int?,
             /// The ending chunk identifier or index of the cited content within the document.
-            end: Swift.Int?,
+            end: Int?,
             /// The starting chunk identifier or index of the cited content within the document.
-            start: Swift.Int?
+            start: Int?
 
         )
         /// The search result location where the cited content is found, including the search result index and block positions within the content array.
         case searchresultlocation(
             /// The ending position in the content array where the cited content ends.
-            end: Swift.Int?,
+            end: Int?,
             /// The index of the search result content block where the cited content is found.
-            searchResultIndex: Swift.Int?,
+            searchResultIndex: Int?,
             /// The starting position in the content array where the cited content begins.
-            start: Swift.Int?
+            start: Int?
 
         )
-        case sdkUnknown(Swift.String)
+        case sdkUnknown(String)
 
         init?(_ location: BedrockRuntimeClientTypes.CitationLocation?) {
             guard let location else {
@@ -979,11 +1074,11 @@ public struct DocumentCitation {
     ///  including character positions, page numbers, or chunk identifiers.
     public var location: CitationLocation?
     /// The source from the original search result that provided the cited content.
-    public var source: Swift.String?
+    public var source: String?
     /// The specific content from the source document that was referenced or cited in the generated response.
     public var sourceContent: [String]?
     /// The title or identifier of the source document being cited.
-    public var title: Swift.String?
+    public var title: String?
 
     init(_ citation: BedrockRuntimeClientTypes.Citation) {
         self.location = .init(citation.location)
@@ -1001,7 +1096,7 @@ public struct DocumentCitation {
 
 @Generable()
 public struct SegmentMetadata {
-    public  var citations: [DocumentCitation]?
+    public var citations: [DocumentCitation]?
 }
 
 nonisolated extension CGImage {

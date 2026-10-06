@@ -5,38 +5,20 @@
 //  Created by Itsuki on 2026/10/05.
 //
 
-
 import AWSBedrockRuntime
-//import CoreImage
-import FoundationModels
 import Foundation
-//extension Document: ExpressibleByDictionaryLiteral {
-//
-//    public init(dictionaryLiteral elements: (String, Document)...) {
-//        let value = elements.reduce([String: Document]()) { acc, curr in
-//            var newValue = acc
-//            newValue[curr.0] = curr.1
-//            return newValue
-//        }
-//        self.init(StringMapDocument(value: value))
-//    }
-//}
-//import Smithy
-//@_spi(SmithyDocumentImpl) import Smithy
-//import SmithyIdentity
-//import SmithyJSON
-//import UniformTypeIdentifiers
+import FoundationModels
 
 
 nonisolated enum BedrockResponseHandler {
-    
+
     static func handleConverseOutput(
         response: ConverseOutput,
         streamingInto channel: LanguageModelExecutorGenerationChannel,
         toolNameMap: [ToolNameMap]
     ) async throws {
         try self.checkStopReason(response)
-        
+
         guard let output = response.output else {
             return
         }
@@ -47,7 +29,7 @@ nonisolated enum BedrockResponseHandler {
             reasoningTokenUsed: &reasoningTokenUsed,
             toolNameMap: toolNameMap
         )
-        
+
         if let usage = response.usage {
             await channel.send(
                 .response(
@@ -64,24 +46,9 @@ nonisolated enum BedrockResponseHandler {
                 )
             )
         }
-        
+
     }
-    
-    private static func text(
-        of documentContentBlocks: [BedrockRuntimeClientTypes
-            .DocumentContentBlock],
-        separator: String = "\n"
-    ) -> String {
-        documentContentBlocks.compactMap {
-            switch $0 {
-            case .text(let t): t
-            case .sdkUnknown(let s): s
-            @unknown default: nil
-            }
-        }
-        .joined(separator: separator)
-    }
-    
+
     private static func text(
         of citationContent: [BedrockRuntimeClientTypes
             .CitationGeneratedContent],
@@ -89,14 +56,14 @@ nonisolated enum BedrockResponseHandler {
     ) -> String {
         citationContent.compactMap {
             switch $0 {
-            case .text(let t): t
+            case .text(let t): t.isEmpty ? nil : t
             case .sdkUnknown(let s): s
             @unknown default: nil
             }
         }
         .joined(separator: separator)
     }
-    
+
     /// event mapping reference:
     /// strands-ts/src/models/bedrock.ts: function _mapBedrockEventToSDKEvent
     private static func streamResult(
@@ -105,17 +72,15 @@ nonisolated enum BedrockResponseHandler {
         reasoningTokenUsed: inout Int,
         toolNameMap: [ToolNameMap]
     ) async throws {
-        print(#function, output)
-        //        response.usage?.outputTokens
-        //        response.serviceTier?.type
-        
+
         // NOTE: explicit Segment ID so that each contentBlock is its own segment (with its own metadata)
         switch output {
         case .message(let message):
+            var metadataMap: [String: SegmentMetadata] = [:]
+
             for contentBlock in message.content ?? [] {
                 let segmentId = UUID().uuidString
-                var metadata = SegmentMetadata()
-                
+
                 switch contentBlock {
                 case .text(let text):
                     await channel.send(
@@ -132,16 +97,16 @@ nonisolated enum BedrockResponseHandler {
                         let toolName = toolNameMap.first(where: {
                             $0.bedrock == toolUse.name
                         })
-                            else {
+                    else {
                         continue
                     }
                     var inputString: String = ""
                     if let input = toolUse.input {
                         inputString =
-                        try SmithyDocumentSupport.jsonString(for: input)
-                        ?? ""
+                            try SmithyDocumentSupport.jsonString(for: input)
+                            ?? ""
                     }
-                    
+
                     await channel.send(
                         .toolCalls(
                             action: .toolCall(
@@ -196,33 +161,34 @@ nonisolated enum BedrockResponseHandler {
                             )
                         )
                     )
-                    metadata.citations = citation.citations?.compactMap {
-                        DocumentCitation($0)
-                    }
+                    metadataMap[segmentId] = SegmentMetadata(
+                        citations: citation.citations?.compactMap {
+                            DocumentCitation($0)
+                        }
+                    )
                 default:
                     continue
                 }
-                
-                await channel.send(
-                    .response(
-                        action: .updateMetadata([
-                            segmentId: metadata
-                        ])
-                    )
-                )
             }
+
+            await channel.send(
+                .response(
+                    action: .updateMetadata(metadataMap)
+                )
+            )
         case .sdkUnknown(_):
             break
         }
     }
-    
+
+    // TODO: throw error accordingly
     private static func checkStopReason(_ output: ConverseOutput) throws {
         switch output.stopReason {
         case .guardrailIntervened:
             throw FoundationModels.LanguageModelError.guardrailViolation(
                 .init(
                     debugDescription: output.trace?.guardrail?.actionReason
-                    ?? ""
+                        ?? ""
                 )
             )
         case .malformedModelOutput:
@@ -253,7 +219,7 @@ nonisolated enum BedrockResponseHandler {
                     debugDescription: "malformedModelOutput"
                 )
             )
-            
+
         case .modelContextWindowExceeded:
             //            throw FoundationModels.LanguageModelError.contextSizeExceeded(.init(contextSize: <#T##Int#>, tokenCount: <#T##Int#>, debugDescription: <#T##String#>))
             break
@@ -263,6 +229,6 @@ nonisolated enum BedrockResponseHandler {
         case .toolUse, .endTurn, .stopSequence, .none:
             break
         }
-        
+
     }
 }

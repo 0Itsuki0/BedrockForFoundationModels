@@ -17,7 +17,6 @@ nonisolated enum SmithyDocumentSupport {
         case decoding(String)
         // Error when encoding Swift Types to smithy document
         case encoding(String)
-
     }
 }
 

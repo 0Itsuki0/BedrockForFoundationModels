@@ -124,6 +124,7 @@ public nonisolated struct BedrockModelConfiguration: Hashable, Sendable {
         }
     }
 
+    /// https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html#prompt-caching-simplified
     public struct CacheConfiguration: Hashable, Sendable {
         /**
          * Cache the tool definitions. A TTL sets this section's duration; `false` disables it.
