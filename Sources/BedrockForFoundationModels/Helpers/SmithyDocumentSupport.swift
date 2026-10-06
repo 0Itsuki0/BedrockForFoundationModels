@@ -12,7 +12,7 @@ import FoundationModels
 import SmithyJSON
 
 nonisolated enum SmithyDocumentSupport {
-    enum Error: LocalizedError {
+    enum Error: LocalizedError, Sendable {
         // Error when decoding smithy document to Swift Types
         case decoding(String)
         // Error when encoding Swift Types to smithy document

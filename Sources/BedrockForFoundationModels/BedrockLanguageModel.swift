@@ -198,6 +198,7 @@ public struct BedrockExecutor: LanguageModelExecutor {
                 from: request,
                 model: model
             )
+
         for (index, message) in (converseInput.messages ?? []).enumerated() {
             print("--index \(index)--")
             print(message.role as Any)

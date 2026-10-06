@@ -214,6 +214,15 @@ nonisolated enum BedrockResponseHandler {
         case .toolUse, .endTurn, .stopSequence, .none, .sdkUnknown(_):
             break
         }
+    }
+    
+    // TODO: - converse stream output handling
+    static func handleConverseStream(
+        response: ConverseOutput,
+        streamingInto channel: LanguageModelExecutorGenerationChannel,
+        toolNameMap: [ToolNameMap]
+    ) async throws {
 
+        
     }
 }
