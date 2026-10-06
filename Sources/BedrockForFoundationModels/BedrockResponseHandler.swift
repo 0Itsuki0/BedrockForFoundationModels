@@ -9,7 +9,6 @@ import AWSBedrockRuntime
 import Foundation
 import FoundationModels
 
-
 nonisolated enum BedrockResponseHandler {
 
     static func handleConverseOutput(
@@ -73,12 +72,12 @@ nonisolated enum BedrockResponseHandler {
         toolNameMap: [ToolNameMap]
     ) async throws {
 
-        // NOTE: explicit Segment ID so that each contentBlock is its own segment (with its own metadata)
         switch output {
         case .message(let message):
             var metadataMap: [String: SegmentMetadata] = [:]
 
             for contentBlock in message.content ?? [] {
+                // explicit Segment ID so that each contentBlock is its own segment (with its own metadata)
                 let segmentId = UUID().uuidString
 
                 switch contentBlock {
@@ -181,7 +180,6 @@ nonisolated enum BedrockResponseHandler {
         }
     }
 
-    // TODO: throw error accordingly
     private static func checkStopReason(_ output: ConverseOutput) throws {
         switch output.stopReason {
         case .guardrailIntervened:
@@ -191,42 +189,29 @@ nonisolated enum BedrockResponseHandler {
                         ?? ""
                 )
             )
-        case .malformedModelOutput:
+
+        case .malformedModelOutput, .contentFiltered, .malformedToolUse,
+            .maxTokens:
+            let explanation =
+                "Model stopped due to \(output.stopReason?.rawValue, default: "unknown reason")."
             throw FoundationModels.LanguageModelError.refusal(
                 .init(
-                    explanation: "malformedModelOutput",
-                    debugDescription: "malformedModelOutput"
-                )
-            )
-        case .contentFiltered:
-            throw FoundationModels.LanguageModelError.refusal(
-                .init(
-                    explanation: "malformedModelOutput",
-                    debugDescription: "malformedModelOutput"
-                )
-            )
-        case .malformedToolUse:
-            throw FoundationModels.LanguageModelError.refusal(
-                .init(
-                    explanation: "malformedModelOutput",
-                    debugDescription: "malformedModelOutput"
-                )
-            )
-        case .maxTokens:
-            throw FoundationModels.LanguageModelError.refusal(
-                .init(
-                    explanation: "malformedModelOutput",
-                    debugDescription: "malformedModelOutput"
+                    explanation: explanation,
+                    debugDescription: explanation
                 )
             )
 
         case .modelContextWindowExceeded:
-            //            throw FoundationModels.LanguageModelError.contextSizeExceeded(.init(contextSize: <#T##Int#>, tokenCount: <#T##Int#>, debugDescription: <#T##String#>))
-            break
-        case .sdkUnknown(let unknown):
-            //            throw FoundationModels.LanguageModelError.refusal(<#T##LanguageModelError.Refusal#>)
-            break
-        case .toolUse, .endTurn, .stopSequence, .none:
+            throw FoundationModels.LanguageModelError.contextSizeExceeded(
+                .init(
+                    contextSize: 0,
+                    tokenCount: output.usage?.totalTokens ?? 0,
+                    debugDescription:
+                        "Model Context Window Exceeded. Context size is based on the model using. "
+                )
+            )
+
+        case .toolUse, .endTurn, .stopSequence, .none, .sdkUnknown(_):
             break
         }
 

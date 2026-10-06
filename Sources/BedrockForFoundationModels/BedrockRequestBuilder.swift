@@ -8,20 +8,7 @@
 import AWSBedrockRuntime
 import CoreImage
 import FoundationModels
-//extension Document: ExpressibleByDictionaryLiteral {
-//
-//    public init(dictionaryLiteral elements: (String, Document)...) {
-//        let value = elements.reduce([String: Document]()) { acc, curr in
-//            var newValue = acc
-//            newValue[curr.0] = curr.1
-//            return newValue
-//        }
-//        self.init(StringMapDocument(value: value))
-//    }
-//}
-//import Smithy
 @_spi(SmithyDocumentImpl) import Smithy
-import SmithyIdentity
 import SmithyJSON
 import UniformTypeIdentifiers
 
