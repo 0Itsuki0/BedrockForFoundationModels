@@ -29,8 +29,6 @@ nonisolated enum BedrockRequestBuilder {
 
     enum Error: LocalizedError {
         case unsupportedDataAttachmentType
-        // Error when converting smithy document to JSON
-        case decodingDocument(String)
     }
     //    ConverseInput
     //    additionalModelRequestFields: Smithy.Document? = nil,
@@ -93,7 +91,22 @@ nonisolated enum BedrockRequestBuilder {
         )
     }
 
-    static func sanitizedJsonSchema(from schema: GenerationSchema) throws
+    private static func buildGuardrailConfig(
+        from executorConfiguration: BedrockExecutor.Configuration
+    ) -> BedrockRuntimeClientTypes.GuardrailConfiguration? {
+        guard let guardrailConfig = executorConfiguration.guardrailConfig else {
+            return nil
+        }
+
+        return .init(
+            guardrailIdentifier: guardrailConfig.guardrailIdentifier,
+            guardrailVersion: guardrailConfig.guardrailVersion,
+            trace: guardrailConfig.trace
+        )
+    }
+
+    private static func sanitizedJsonSchema(from schema: GenerationSchema)
+        throws
         -> String?
     {
         let document = try SmithyDocumentSupport.document(from: schema)
@@ -141,7 +154,7 @@ nonisolated enum BedrockRequestBuilder {
         }
     }
 
-    static func buildOutputConfig(
+    private static func buildOutputConfig(
         from request: LanguageModelExecutorGenerationRequest,
     ) throws -> BedrockRuntimeClientTypes.OutputConfig {
         var config = BedrockRuntimeClientTypes.OutputConfig()
@@ -178,7 +191,7 @@ nonisolated enum BedrockRequestBuilder {
         /// block once the conversation before it has changed, and the system prompt
         /// is part of that conversation. `includeSchemaInPrompt` is moot for the
         /// same reason: the schema always reaches the model.
-        //        request.contextOptions.includeSchemaInPrompt
+
         var input = ConverseInput()
         let inferenceConfig = buildInferenceConfig(from: request)
         input.inferenceConfig = inferenceConfig.config
@@ -204,7 +217,15 @@ nonisolated enum BedrockRequestBuilder {
             toolNameMap = config.1
         }
 
-        input.modelId = model.executorConfiguration.modelId
+        let executorConfiguration = model.executorConfiguration
+        input.modelId = executorConfiguration.modelId
+        input.guardrailConfig = buildGuardrailConfig(
+            from: executorConfiguration
+        )
+
+        input.performanceConfig = .init(
+            latency: executorConfiguration.performance
+        )
 
         var system: [BedrockRuntimeClientTypes.SystemContentBlock] = []
         var messages: [BedrockRuntimeClientTypes.Message] = []
@@ -222,7 +243,6 @@ nonisolated enum BedrockRequestBuilder {
         for (index, entry) in request.transcript.enumerated() {
             switch entry {
             case .instructions(let instruction):
-                //                closeTurn()
                 if let block = systemContentBlock(from: instruction) {
                     system.append(block)
                 }
@@ -663,118 +683,10 @@ nonisolated enum BedrockRequestBuilder {
     }
 
 }
-//
-//extension GeneratedContent {
-//    enum Error: LocalizedError, Sendable {
-//        /// The bytes weren't a decodable image.
-//        //        case undecodable
-//        /// `ImageIO` could not write the re-encoded image.
-//        case encodingFailed
-//        /// Still over ``maxByteCount`` after re-encoding at the lowest quality.
-//        //        case tooLarge(byteCount: Int)
-//
-//        var errorDescription: String? {
-//            switch self {
-//            //            case .undecodable:
-//            //                "The data could not be decoded as an image."
-//            case .encodingFailed:
-//                "The generated content cannot be converted to structure accept by bedrock API."
-//            //            case .tooLarge(let byteCount):
-//            //                "The image is \(byteCount) bytes after compression, over the "
-//            //                + "\(ClaudeImage.maxByteCount)-byte limit."
-//            }
-//        }
-//    }
-//
-//    var smithyDocument: Smithy.Document {
-//        get throws {
-//            switch self.kind {
-//            case .null:
-//                return .init(nilLiteral: ())
-//            case .bool(let value):
-//                return .init(booleanLiteral: value)
-//            case .number(let value):
-//                return .init(floatLiteral: Float(value))
-//            case .string(let value):
-//                return .init(stringLiteral: value)
-//            case .array(let value):
-//                return .init(
-//                    ListDocument(
-//                        value: try value.map({ try $0.smithyDocument })
-//                    )
-//                )
-//            case .structure(let value, _):
-//                return .init(
-//                    StringMapDocument(
-//                        value: try value.mapValues({ try $0.smithyDocument })
-//                    )
-//                )
-//            @unknown default:
-//                throw Error.encodingFailed
-//            }
-//        }
-//    }
-//}
 
 nonisolated extension String {
     public static let enableDocumentCitationKey = "enableCitation"
     public static let documentNameKey = "name"
-}
-
-//extension Transcript.Segment {
-//    private var contentBlock: BedrockRuntimeClientTypes.ContentBlock? {
-//        switch self {
-//        case .text(let text):
-//            return .text(text.content)
-//        case .structure(let structured):
-//            return .text(structured.content.jsonString)
-//        case .attachment(let attachment):
-//            switch attachment.content {
-//
-//            case .image(let image):
-//                return .image(.init())
-//            case .data(_):
-//                <#code#>
-//            @unknown default:
-//                <#fatalError()#>
-//            }
-//        @unknown default:
-//            print("Unknown segment type: \(self)")
-//            return nil
-//        }
-//    }
-//}
-
-extension Transcript.DataAttachment {
-    private var contentBlock: BedrockRuntimeClientTypes.ContentBlock? {
-        get throws {
-
-            // DocumentBlock
-            if let documentFormat = self.contentType.documentFormat,
-                !documentFormat.isUnknown
-            {
-                return .document(.init(citations: .init(enabled: true)))
-            }
-
-            // VideoBlock
-
-            // Audio Block
-            /// A document to include in the message.
-            //        case document(BedrockRuntimeClientTypes.DocumentBlock)
-            //            /// Video to include in the message.
-            //        case video(BedrockRuntimeClientTypes.VideoBlock)
-            //            /// An audio content block containing audio data in the conversation.
-            //        case audio(BedrockRuntimeClientTypes.AudioBlock)
-
-            //            let oriented = self.ciImage.oriented(orientation)
-            //            let source: BedrockRuntimeClientTypes.ImageSource = .bytes(
-            //                try oriented.jpegData
-            //            )
-            //            return .image(.init(format: .jpeg, source: source))
-
-            return nil
-        }
-    }
 }
 
 nonisolated extension BedrockRuntimeClientTypes.AudioFormat {
@@ -927,21 +839,7 @@ nonisolated extension UTType {
     }
 }
 
-extension Transcript.ImageAttachment {
-    private var contentBlock: BedrockRuntimeClientTypes.ContentBlock {
-        get throws {
-            let oriented = self.ciImage.oriented(orientation)
-            let source: BedrockRuntimeClientTypes.ImageSource = .bytes(
-                try oriented.jpegData
-            )
-            return .image(.init(format: .jpeg, source: source))
-        }
-    }
-}
-
-nonisolated
-    extension CIImage
-{
+nonisolated extension CIImage {
     enum Error: LocalizedError, Sendable {
         /// The bytes weren't a decodable image.
         //        case undecodable
@@ -983,6 +881,186 @@ nonisolated
             }
 
             return jpegData
+        }
+    }
+}
+
+nonisolated package struct ToolNameMap {
+    let original: String
+    let bedrock: String
+}
+
+@Generable()
+public struct DocumentCitation {
+
+    @Generable()
+    public enum CitationLocation: Swift.Sendable {
+        /// The web URL that was cited for this reference.
+        case web(domain: String?, url: String?)
+        /// The character-level location within the document where the cited content is found.
+        case documentchar(
+            /// The index of the document within the array of documents provided in the request.
+            documentIndex: Swift.Int?,
+            /// The ending character position of the cited content within the document.
+            end: Swift.Int?,
+            /// The starting character position of the cited content within the document.
+            start: Swift.Int?
+        )
+        /// The page-level location within the document where the cited content is found.
+        case documentpage(
+            /// The index of the document within the array of documents provided in the request.
+            documentIndex: Swift.Int?,
+            /// The ending page number of the cited content within the document.
+            end: Swift.Int?,
+            /// The starting page number of the cited content within the document.
+            start: Swift.Int?
+        )
+        /// The chunk-level location within the document where the cited content is found, typically used for documents that have been segmented into logical chunks.
+        case documentchunk(
+            /// The index of the document within the array of documents provided in the request.
+            documentIndex: Swift.Int?,
+            /// The ending chunk identifier or index of the cited content within the document.
+            end: Swift.Int?,
+            /// The starting chunk identifier or index of the cited content within the document.
+            start: Swift.Int?
+
+        )
+        /// The search result location where the cited content is found, including the search result index and block positions within the content array.
+        case searchresultlocation(
+            /// The ending position in the content array where the cited content ends.
+            end: Swift.Int?,
+            /// The index of the search result content block where the cited content is found.
+            searchResultIndex: Swift.Int?,
+            /// The starting position in the content array where the cited content begins.
+            start: Swift.Int?
+
+        )
+        case sdkUnknown(Swift.String)
+
+        init?(_ location: BedrockRuntimeClientTypes.CitationLocation?) {
+            guard let location else {
+                return nil
+            }
+            switch location {
+            case .web(let webLocation):
+                self = .web(domain: webLocation.domain, url: webLocation.url)
+            case .documentchar(let documentCharLocation):
+                self = .documentchar(
+                    documentIndex: documentCharLocation.start,
+                    end: documentCharLocation.end,
+                    start: documentCharLocation.start
+                )
+            case .documentpage(let documentPageLocation):
+                self = .documentpage(
+                    documentIndex: documentPageLocation.start,
+                    end: documentPageLocation.end,
+                    start: documentPageLocation.start
+                )
+
+            case .documentchunk(let documentChunkLocation):
+                self = .documentchunk(
+                    documentIndex: documentChunkLocation.start,
+                    end: documentChunkLocation.end,
+                    start: documentChunkLocation.start
+                )
+            case .searchresultlocation(let searchResultLocation):
+                self = .searchresultlocation(
+                    end: searchResultLocation.end,
+                    searchResultIndex: searchResultLocation.searchResultIndex,
+                    start: searchResultLocation.start
+                )
+            case .sdkUnknown(let string):
+                self = .sdkUnknown(string)
+            }
+        }
+    }
+
+    /// The precise location within the source document where the cited content can be found,
+    ///  including character positions, page numbers, or chunk identifiers.
+    public var location: CitationLocation?
+    /// The source from the original search result that provided the cited content.
+    public var source: Swift.String?
+    /// The specific content from the source document that was referenced or cited in the generated response.
+    public var sourceContent: [String]?
+    /// The title or identifier of the source document being cited.
+    public var title: Swift.String?
+
+    init(_ citation: BedrockRuntimeClientTypes.Citation) {
+        self.location = .init(citation.location)
+        self.source = citation.source
+        self.sourceContent = (citation.sourceContent ?? []).compactMap {
+            content in
+            switch content {
+            case .sdkUnknown(_): nil
+            case .text(let text): text
+            }
+        }
+        self.title = citation.title
+    }
+}
+
+@Generable()
+public struct SegmentMetadata {
+    public  var citations: [DocumentCitation]?
+}
+
+nonisolated extension CGImage {
+    enum Error: LocalizedError {
+        case encodingFailed
+    }
+    static func fromData(_ data: Data) throws -> CGImage {
+        guard let imageSource = CGImageSourceCreateWithData(data as CFData, nil)
+        else {
+            throw Error.encodingFailed
+        }
+        guard let image = CGImageSourceCreateImageAtIndex(imageSource, 0, nil)
+        else {
+            throw Error.encodingFailed
+        }
+        return image
+    }
+}
+
+// LanguageModelExecutorGenerationRequest.metadata contains the newest prompt.metadata,
+// aka: the metadata of the last respond/streamResponse call
+public enum RequestMetadataKey: String {
+    /// true: ConverseStream. false: Converse
+    /// ex: metadata: [RequestMetadataKey.stream.rawValue: false]
+    case stream
+    /// A list of stop sequences String. A stop sequence is a sequence of characters that causes the model to stop generating the response.
+    /// ex: metadata: [RequestMetadataKey.stopSequences.rawValue: ["END"]]
+    case stopSequences
+
+    /// https://docs.aws.amazon.com/nova/latest/userguide/extended-thinking.html
+    // case extendedThinking
+}
+
+/// The effort level for the model to use when generating a response.
+/// Higher effort levels allow the model to spend more time reasoning before responding.
+/// Supported values are low, medium, high, xhigh, and max.
+/// When [extended thinking](https://docs.aws.amazon.com/nova/latest/userguide/extended-thinking.html) is disabled, the effort level is capped at high.
+/// Use effort high or below, or enable thinking to use higher effort levels.
+nonisolated enum OutputEffort: String {
+    case low
+    case medium
+    case high
+    case xhigh
+    case max
+}
+
+nonisolated extension ContextOptions.ReasoningLevel {
+    var outputEffort: OutputEffort? {
+        switch self {
+        case .light:
+            .low
+        case .moderate:
+            .medium
+        case .deep:
+            .high
+        case .custom(let string):
+            OutputEffort(rawValue: string)
+        @unknown default:
+            nil
         }
     }
 }
