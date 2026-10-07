@@ -1,14 +1,13 @@
 //
-//  UTType+Extensions.swift
+//  AttachmentUTType.swift
 //  BedrockForFoundationModels
 //
-//  Created by Itsuki on 2026/10/06.
+//  Created by Itsuki on 2026/10/07.
 //
 
 import AWSBedrockRuntime
 import UniformTypeIdentifiers
 
-// MARK: - Public Identifiers for documents/images
 nonisolated extension UTType {
     public static let doc = UTType(
         identifier: "com.microsoft.word.doc",
@@ -80,28 +79,68 @@ nonisolated extension UTType {
         filenameExtension: "xaac",
         conformingTo: aac ?? .audio
     )
-
 }
 
-// MARK: - conversions between UTType and bedrock type
-nonisolated extension UTType {
-    var documentFormat: BedrockRuntimeClientTypes.DocumentFormat? {
-        return switch self as UTType? {
+extension BedrockRuntimeClientTypes.DocumentFormat {
+    public var utType: UTType? {
+        return switch self {
+        case .csv: .commaSeparatedText
+        case .doc: .doc
+        case .docx: .docx
+        case .html: .html
+        case .md: .markdown
+        case .pdf: .pdf
+        case .xls: .xls
+        case .xlsx: .xlsx
+        case .txt: .plainText
+        default: nil
+        }
+    }
+
+    public static func fromUTType(_ type: UTType?) -> BedrockRuntimeClientTypes
+        .DocumentFormat?
+    {
+        return switch type {
         case .commaSeparatedText: .csv
         case .doc: .doc
         case .docx: .docx
         case .html: .html
         case .markdown: .md
         case .pdf: .pdf
-        case .plainText: .txt
         case .xls: .xls
         case .xlsx: .xlsx
+        case .plainText, .utf8PlainText, .utf16PlainText, .text: .txt
+        default: nil
+        }
+    }
+}
+
+extension BedrockRuntimeClientTypes.AudioFormat {
+    public var utType: UTType? {
+        return switch self {
+        case .aac: .aac
+        case .flac: .flac
+        case .m4a: .mpeg4Audio
+        case .mka: .mka
+        case .mkv: .mkv
+        case .mp3: .mp3
+        case .mp4: .mpeg4Movie
+        case .mpeg: .mpeg
+        case .mpga: .mp3
+        case .ogg: .ogg
+        case .opus: .opus
+        case .pcm: .pcm
+        case .wav: .wav
+        case .webm: .webm
+        case .xAac: .xAac
         default: nil
         }
     }
 
-    var audioFormat: BedrockRuntimeClientTypes.AudioFormat? {
-        return switch self as UTType? {
+    public static func fromUTType(_ type: UTType?) -> BedrockRuntimeClientTypes
+        .AudioFormat?
+    {
+        return switch type {
         case .aac: .aac
         case .flac: .flac
         case .mpeg4Audio: .m4a
@@ -120,9 +159,27 @@ nonisolated extension UTType {
         default: nil
         }
     }
+}
 
-    var videoFormat: BedrockRuntimeClientTypes.VideoFormat? {
-        return switch self as UTType? {
+extension BedrockRuntimeClientTypes.VideoFormat {
+    public var utType: UTType? {
+        return switch self {
+        case .flv: .flv
+        case .mkv: .mkv
+        case .mov: .quickTimeMovie
+        case .mpeg: .mpeg
+        case .mpg: .mpg
+        case .threeGp: .threeGp
+        case .webm: .webm
+        case .wmv: .wmv
+        default: nil
+        }
+    }
+
+    public static func fromUTType(_ type: UTType?) -> BedrockRuntimeClientTypes
+        .VideoFormat?
+    {
+        return switch type {
         case .flv: .flv
         case .mkv: .mkv
         case .quickTimeMovie: .mov

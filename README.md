@@ -9,11 +9,11 @@
 - override SigV4 with the provided access key / session token
 - basic caching (tool, system, message)
 - guardrails
+- basic streaming (with tool use)
 
 
 ## Pending Task
 - document citation testing
-- stream with ConverseStream
 - prompt metadata
 - confirming API key override
 - message caching with documents added

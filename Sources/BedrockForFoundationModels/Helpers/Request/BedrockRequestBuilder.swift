@@ -667,7 +667,9 @@ nonisolated enum BedrockRequestBuilder {
         metadata: GeneratedContent,
         label: String?
     ) -> BedrockRuntimeClientTypes.DocumentBlock? {
-        guard let documentFormat = contentType.documentFormat,
+        guard
+            let documentFormat = BedrockRuntimeClientTypes.DocumentFormat
+                .fromUTType(contentType),
             !documentFormat.isUnknown
         else { return nil }
 
@@ -696,7 +698,9 @@ nonisolated enum BedrockRequestBuilder {
         contentType: UTType
     ) -> BedrockRuntimeClientTypes.VideoBlock? {
 
-        guard let videoFormat = contentType.videoFormat,
+        guard
+            let videoFormat = BedrockRuntimeClientTypes.VideoFormat
+                .fromUTType(contentType),
             !videoFormat.isUnknown
         else { return nil }
 
@@ -711,7 +715,9 @@ nonisolated enum BedrockRequestBuilder {
         contentType: UTType
     ) -> BedrockRuntimeClientTypes.AudioBlock? {
 
-        guard let audioFormat = contentType.audioFormat,
+        guard
+            let audioFormat = BedrockRuntimeClientTypes.AudioFormat
+                .fromUTType(contentType),
             !audioFormat.isUnknown
         else { return nil }
 

@@ -15,6 +15,7 @@
 import AWSBedrockRuntime
 import Foundation
 import FoundationModels
+import UniformTypeIdentifiers
 
 public struct BedrockLanguageModel: LanguageModel {
     public let executorConfiguration: BedrockExecutor.Configuration
@@ -54,6 +55,10 @@ public struct BedrockLanguageModel: LanguageModel {
             .toolCalling, .guidedGeneration, .reasoning, .vision,
         ])
     }
+
+    public func supportsDataAttachmentType(_ type: UTType) async throws -> Bool {
+        <#code#>
+    }
 }
 
 public nonisolated struct BedrockModelConfiguration: Hashable, Sendable {
@@ -82,15 +87,17 @@ public nonisolated struct BedrockModelConfiguration: Hashable, Sendable {
         public var guardrailVersion: Swift.String?
         /// The trace behavior for the guardrail.
         public var trace: BedrockRuntimeClientTypes.GuardrailTrace?
-        
+
         /// The processing mode. For more information, see Configure streaming response behavior in the Amazon Bedrock User Guide.
-        public var streamProcessingMode: BedrockRuntimeClientTypes.GuardrailStreamProcessingMode?
+        public var streamProcessingMode:
+            BedrockRuntimeClientTypes.GuardrailStreamProcessingMode?
 
         public init(
             guardrailIdentifier: String?,
             guardrailVersion: String?,
             trace: BedrockRuntimeClientTypes.GuardrailTrace?,
-            streamProcessingMode: BedrockRuntimeClientTypes.GuardrailStreamProcessingMode?
+            streamProcessingMode: BedrockRuntimeClientTypes
+                .GuardrailStreamProcessingMode?
         ) {
             self.guardrailIdentifier = guardrailIdentifier
             self.guardrailVersion = guardrailVersion
