@@ -82,15 +82,20 @@ public nonisolated struct BedrockModelConfiguration: Hashable, Sendable {
         public var guardrailVersion: Swift.String?
         /// The trace behavior for the guardrail.
         public var trace: BedrockRuntimeClientTypes.GuardrailTrace?
+        
+        /// The processing mode. For more information, see Configure streaming response behavior in the Amazon Bedrock User Guide.
+        public var streamProcessingMode: BedrockRuntimeClientTypes.GuardrailStreamProcessingMode?
 
         public init(
             guardrailIdentifier: String?,
             guardrailVersion: String?,
-            trace: BedrockRuntimeClientTypes.GuardrailTrace?
+            trace: BedrockRuntimeClientTypes.GuardrailTrace?,
+            streamProcessingMode: BedrockRuntimeClientTypes.GuardrailStreamProcessingMode?
         ) {
             self.guardrailIdentifier = guardrailIdentifier
             self.guardrailVersion = guardrailVersion
             self.trace = trace
+            self.streamProcessingMode = streamProcessingMode
         }
     }
 

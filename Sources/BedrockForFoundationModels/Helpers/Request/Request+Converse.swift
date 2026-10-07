@@ -1,58 +1,57 @@
 //
-//  Request+ConverseStream.swift
+//  Request+Converse.swift
 //  BedrockForFoundationModels
 //
-//  Created by Itsuki on 2026/10/06.
+//  Created by Itsuki on 2026/10/07.
 //
 
 import AWSBedrockRuntime
 import Foundation
 import FoundationModels
 
-// MARK: - helper for building converse stream input
+// MARK: - helper for building converse input
 nonisolated extension BedrockRequestBuilder {
 
-    static func buildConverseStreamInput(
+    static func buildConverseInput(
         from request: LanguageModelExecutorGenerationRequest,
         model: BedrockLanguageModel
-    ) throws -> (ConverseStreamInput, [ToolNameMap]) {
+    ) throws -> (ConverseInput, [ToolNameMap]) {
         let (inputCommon, toolNameMap) = try buildConverseInputCommon(
             from: request,
             model: model
         )
 
         return (
-            converseStreamInput(
+            converseInput(
                 from: inputCommon,
-                guardrailConfig: buildGuardrailStreamConfig(
+                guardrailConfig: buildGuardrailConfig(
                     from: model.executorConfiguration
                 )
             ), toolNameMap
         )
     }
 
-    private static func buildGuardrailStreamConfig(
+    private static func buildGuardrailConfig(
         from executorConfiguration: BedrockExecutor.Configuration
-    ) -> BedrockRuntimeClientTypes.GuardrailStreamConfiguration? {
+    ) -> BedrockRuntimeClientTypes.GuardrailConfiguration? {
         guard let guardrailConfig = executorConfiguration.guardrailConfig else {
             return nil
         }
 
-        return BedrockRuntimeClientTypes.GuardrailStreamConfiguration(
+        return .init(
             guardrailIdentifier: guardrailConfig.guardrailIdentifier,
             guardrailVersion: guardrailConfig.guardrailVersion,
-            streamProcessingMode: guardrailConfig.streamProcessingMode,
             trace: guardrailConfig.trace
         )
     }
 
-    private static func converseStreamInput(
+    private static func converseInput(
         from commonInput: ConverseInputCommon,
-        guardrailConfig: BedrockRuntimeClientTypes.GuardrailStreamConfiguration?
+        guardrailConfig: BedrockRuntimeClientTypes.GuardrailConfiguration?
     )
-        -> ConverseStreamInput
+        -> ConverseInput
     {
-        return ConverseStreamInput(
+        return ConverseInput(
             additionalModelRequestFields: commonInput
                 .additionalModelRequestFields,
             additionalModelResponseFieldPaths: commonInput

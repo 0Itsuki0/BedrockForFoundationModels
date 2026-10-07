@@ -12,6 +12,7 @@ import FoundationModels
 import SmithyJSON
 import UniformTypeIdentifiers
 
+// MARK: - Converse / Converse Stream Input Request Builder Shared
 nonisolated enum BedrockRequestBuilder {
 
     enum Error: LocalizedError, Sendable {
@@ -44,10 +45,12 @@ nonisolated enum BedrockRequestBuilder {
             if generationOptions.temperature == nil {
                 configuration.temperature = 0
             }
-        case .randomTopK(let k, _):  // the API has no sampling-seed parameter
+        case .randomTopK(let k, _):
             /// Top k passed in with additionalModelRequestFields:
             /// https://docs.aws.amazon.com/nova/latest/userguide/using-converse-api.html
             /// additionalModelRequestFields = { "inferenceConfig": { "topK": 20 }}
+            ///
+            /// the API has no sampling-seed parameter
             additionalInferenceConfig["topK"] = Smithy.Document(
                 integerLiteral: k
             )
@@ -64,20 +67,6 @@ nonisolated enum BedrockRequestBuilder {
             additionalInferenceConfig.isEmpty
                 ? nil
                 : additionalInferenceConfig
-        )
-    }
-
-    private static func buildGuardrailConfig(
-        from executorConfiguration: BedrockExecutor.Configuration
-    ) -> BedrockRuntimeClientTypes.GuardrailConfiguration? {
-        guard let guardrailConfig = executorConfiguration.guardrailConfig else {
-            return nil
-        }
-
-        return .init(
-            guardrailIdentifier: guardrailConfig.guardrailIdentifier,
-            guardrailVersion: guardrailConfig.guardrailVersion,
-            trace: guardrailConfig.trace
         )
     }
 
@@ -154,11 +143,10 @@ nonisolated enum BedrockRequestBuilder {
         return config
     }
 
-    // TODO: Add cache points based on the cache config
-    static func buildConverseInput(
+    static func buildConverseInputCommon(
         from request: LanguageModelExecutorGenerationRequest,
         model: BedrockLanguageModel
-    ) throws -> (ConverseInput, [ToolNameMap]) {
+    ) throws -> (ConverseInputCommon, [ToolNameMap]) {
         let executorConfiguration = model.executorConfiguration
         // https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html#prompt-caching-simplified
         let cacheConfig = executorConfiguration.cacheConfig
@@ -173,7 +161,7 @@ nonisolated enum BedrockRequestBuilder {
         /// is part of that conversation. `includeSchemaInPrompt` is moot for the
         /// same reason: the schema always reaches the model.
 
-        var input = ConverseInput()
+        var input = ConverseInputCommon()
         let inferenceConfig = buildInferenceConfig(from: request)
         input.inferenceConfig = inferenceConfig.config
         var additionalModelRequestFields: [String: SmithyDocument] = [:]
@@ -200,9 +188,6 @@ nonisolated enum BedrockRequestBuilder {
         }
 
         input.modelId = executorConfiguration.modelId
-        input.guardrailConfig = buildGuardrailConfig(
-            from: executorConfiguration
-        )
 
         input.performanceConfig = .init(
             latency: executorConfiguration.performance
@@ -271,7 +256,7 @@ nonisolated enum BedrockRequestBuilder {
                 continue
             }
         }
-        // print("messages: ", messages)
+
         messages = groupMessagesByRole(messages: messages)
         messages = addMessageCache(
             messages: messages,
@@ -757,6 +742,7 @@ nonisolated package struct ToolNameMap {
     let bedrock: String
 }
 
+// TODO: move request metadata key to be within the model configuration
 // LanguageModelExecutorGenerationRequest.metadata contains the newest prompt.metadata,
 // aka: the metadata of the last respond/streamResponse call
 public enum RequestMetadataKey: String {
