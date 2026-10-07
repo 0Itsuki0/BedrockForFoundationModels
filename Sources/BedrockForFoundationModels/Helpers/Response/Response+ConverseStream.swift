@@ -201,11 +201,7 @@ nonisolated extension BedrockResponseHandler {
         )
 
         // Update metadata for all segments
-        await channel.send(
-            .response(
-                action: .updateMetadata(removeEmptyMetadata(metadataMap))
-            )
-        )
+        await sendMetadata(metadataMap, into: channel)
 
         await self.sendTokenUsage(
             metadata?.usage,
@@ -295,5 +291,4 @@ nonisolated extension BedrockResponseHandler {
         finalCitations.append(currentCitation)
         return finalCitations
     }
-
 }
