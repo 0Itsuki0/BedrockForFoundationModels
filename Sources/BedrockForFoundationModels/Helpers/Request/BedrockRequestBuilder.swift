@@ -19,8 +19,177 @@ nonisolated enum BedrockRequestBuilder {
         case unsupportedDataAttachmentType
     }
 
+    static func buildConverseInputCommon(
+        from request: LanguageModelExecutorGenerationRequest,
+        model: BedrockLanguageModel
+    ) throws -> (ConverseInputCommon, [ToolNameMap]) {
+        let executorConfiguration = model.executorConfiguration
+        // https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html#prompt-caching-simplified
+        let cacheConfig = executorConfiguration.cacheConfig
+
+        /// Strict JSON Schema via constrained decoding (`output_config.format`) —
+        /// the model cannot emit a token that violates the schema. Compatible with
+        /// thinking; the response streams as plain text deltas containing valid
+        /// JSON. Nothing is added to `system`. The API shows the model the schema
+        /// itself whenever a format is set. And `system` has to stay the same
+        /// across a session's requests: the API can reject a replayed thinking
+        /// block once the conversation before it has changed, and the system prompt
+        /// is part of that conversation. `includeSchemaInPrompt` is moot for the
+        /// same reason: the schema always reaches the model.
+
+        var input = ConverseInputCommon()
+        let inferenceConfig = buildInferenceConfig(from: request)
+        input.inferenceConfig = inferenceConfig.config
+        var additionalModelRequestFields: [String: SmithyDocument] = [:]
+
+        // https://docs.aws.amazon.com/nova/latest/userguide/using-converse-api.html
+        if let additionalInferenceConfig = inferenceConfig
+            .additionalInferenceConfig
+        {
+            additionalModelRequestFields["inferenceConfig"] = StringMapDocument(
+                value: additionalInferenceConfig
+            )
+        }
+
+        input.outputConfig = try buildOutputConfig(from: request)
+
+        var toolNameMap: [ToolNameMap] = []
+        if let config = try buildToolConfig(
+            tools: request.enabledToolDefinitions,
+            callingMode: request.generationOptions.toolCallingMode,
+            cacheConfig: cacheConfig?.toolsTTL
+        ) {
+            input.toolConfig = config.0
+            toolNameMap = config.1
+        }
+
+        input.modelId = executorConfiguration.modelId
+
+        input.performanceConfig = .init(
+            latency: executorConfiguration.performance
+        )
+
+        let (system, messages, isToolOutputTurn) = try buildMessages(
+            from: request.transcript,
+            cacheConfig: cacheConfig,
+            toolNameMap: toolNameMap
+        )
+        
+        input.messages = messages
+
+        if !system.isEmpty {
+            input.system = system
+        }
+
+        if !additionalModelRequestFields.isEmpty {
+            input.additionalModelRequestFields = .init(
+                StringMapDocument(value: additionalModelRequestFields)
+            )
+        }
+
+        // if it is tool output turn
+        // forcing tool use will result in infinite tool calling loop
+        if isToolOutputTurn {
+            input.toolConfig?.toolChoice = .auto(.init())
+        }
+
+        return (input, toolNameMap)
+    }
+
+    private static func buildMessages(
+        from transcript: Transcript,
+        cacheConfig: BedrockModelConfiguration.CacheConfiguration?,
+        toolNameMap: [ToolNameMap]
+    ) throws -> (
+        system: [BedrockRuntimeClientTypes.SystemContentBlock],
+        messages: [BedrockRuntimeClientTypes.Message],
+        isToolOutputTurn: Bool
+    ) {
+        var system: [BedrockRuntimeClientTypes.SystemContentBlock] = []
+        var messages: [BedrockRuntimeClientTypes.Message] = []
+        var isToolOutputTurn: Bool = false
+
+        func addMessage(
+            _ blocks: [BedrockRuntimeClientTypes.ContentBlock],
+            _ role: BedrockRuntimeClientTypes.ConversationRole
+        ) {
+            if !blocks.isEmpty {
+                messages.append(.init(content: blocks, role: role))
+            }
+        }
+
+        for (index, entry) in transcript.enumerated() {
+            switch entry {
+            case .instructions(let instruction):
+                if let block = systemContentBlock(from: instruction) {
+                    system.append(block)
+                }
+
+            case .prompt(let prompt):
+                addMessage(try contentBlocks(from: prompt.segments), .user)
+            case .toolOutput(let toolOutput):
+                addMessage(
+                    [try toolResultContentBlocks(from: toolOutput)],
+                    .user
+                )
+                if index == transcript.count - 1 {
+                    isToolOutputTurn = true
+                }
+            case .data(let dataEntry):
+                print(
+                    "Received data entry, still trying to figure out where to put it."
+                )
+                print(dataEntry.description)
+                continue
+
+            case .toolCalls(let toolCalls):
+
+                addMessage(
+                    toolCallContentBlocks(
+                        from: toolCalls,
+                        toolNameMap: toolNameMap
+                    ),
+                    .assistant
+                )
+                continue
+            case .response(let response):
+                addMessage(
+                    try contentBlocks(from: response.segments),
+                    .assistant
+                )
+            case .reasoning(let reasoning):
+                addMessage(
+                    [reasoningContentBlock(from: reasoning)],
+                    .assistant
+                )
+
+            @unknown default:
+                print("Received unknown entry type", entry.description)
+                continue
+            }
+        }
+
+        messages = groupMessagesByRole(messages: messages)
+        messages = addMessageCache(
+            messages: messages,
+            cacheConfig: cacheConfig?.messagesTTL
+        )
+
+        if !system.isEmpty,
+            let cachePoint = buildCachePoint(
+                ttl: cacheConfig?.systemPromptTTL
+            )
+        {
+            system.append(
+                .cachepoint(cachePoint)
+            )
+        }
+
+        return (system, messages, isToolOutputTurn)
+    }
+
     // TODO: - check image/document size
-    static func checkAttachmentSize() {
+    private static func checkAttachmentSize() {
 
     }
 
@@ -141,155 +310,6 @@ nonisolated enum BedrockRequestBuilder {
             )
         }
         return config
-    }
-
-    static func buildConverseInputCommon(
-        from request: LanguageModelExecutorGenerationRequest,
-        model: BedrockLanguageModel
-    ) throws -> (ConverseInputCommon, [ToolNameMap]) {
-        let executorConfiguration = model.executorConfiguration
-        // https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html#prompt-caching-simplified
-        let cacheConfig = executorConfiguration.cacheConfig
-
-        /// Strict JSON Schema via constrained decoding (`output_config.format`) —
-        /// the model cannot emit a token that violates the schema. Compatible with
-        /// thinking; the response streams as plain text deltas containing valid
-        /// JSON. Nothing is added to `system`. The API shows the model the schema
-        /// itself whenever a format is set. And `system` has to stay the same
-        /// across a session's requests: the API can reject a replayed thinking
-        /// block once the conversation before it has changed, and the system prompt
-        /// is part of that conversation. `includeSchemaInPrompt` is moot for the
-        /// same reason: the schema always reaches the model.
-
-        var input = ConverseInputCommon()
-        let inferenceConfig = buildInferenceConfig(from: request)
-        input.inferenceConfig = inferenceConfig.config
-        var additionalModelRequestFields: [String: SmithyDocument] = [:]
-
-        // https://docs.aws.amazon.com/nova/latest/userguide/using-converse-api.html
-        if let additionalInferenceConfig = inferenceConfig
-            .additionalInferenceConfig
-        {
-            additionalModelRequestFields["inferenceConfig"] = StringMapDocument(
-                value: additionalInferenceConfig
-            )
-        }
-
-        input.outputConfig = try buildOutputConfig(from: request)
-
-        var toolNameMap: [ToolNameMap] = []
-        if let config = try buildToolConfig(
-            tools: request.enabledToolDefinitions,
-            callingMode: request.generationOptions.toolCallingMode,
-            cacheConfig: cacheConfig?.toolsTTL
-        ) {
-            input.toolConfig = config.0
-            toolNameMap = config.1
-        }
-
-        input.modelId = executorConfiguration.modelId
-
-        input.performanceConfig = .init(
-            latency: executorConfiguration.performance
-        )
-
-        var system: [BedrockRuntimeClientTypes.SystemContentBlock] = []
-        var messages: [BedrockRuntimeClientTypes.Message] = []
-        var isToolOutputTurn: Bool = false
-
-        func addMessage(
-            _ blocks: [BedrockRuntimeClientTypes.ContentBlock],
-            _ role: BedrockRuntimeClientTypes.ConversationRole
-        ) {
-            if !blocks.isEmpty {
-                messages.append(.init(content: blocks, role: role))
-            }
-        }
-
-        for (index, entry) in request.transcript.enumerated() {
-            switch entry {
-            case .instructions(let instruction):
-                if let block = systemContentBlock(from: instruction) {
-                    system.append(block)
-                }
-
-            case .prompt(let prompt):
-                addMessage(try contentBlocks(from: prompt.segments), .user)
-            case .toolOutput(let toolOutput):
-                addMessage(
-                    [try toolResultContentBlocks(from: toolOutput)],
-                    .user
-                )
-                if index == request.transcript.count - 1 {
-                    isToolOutputTurn = true
-                }
-            case .data(let dataEntry):
-                print(
-                    "Received data entry, still trying to figure out where to put it."
-                )
-                print(dataEntry.description)
-                continue
-
-            case .toolCalls(let toolCalls):
-
-                addMessage(
-                    toolCallContentBlocks(
-                        from: toolCalls,
-                        toolNameMap: toolNameMap
-                    ),
-                    .assistant
-                )
-                continue
-            case .response(let response):
-                addMessage(
-                    try contentBlocks(from: response.segments),
-                    .assistant
-                )
-            case .reasoning(let reasoning):
-                addMessage(
-                    [reasoningContentBlock(from: reasoning)],
-                    .assistant
-                )
-
-            @unknown default:
-                print("Received unknown entry type", entry.description)
-                continue
-            }
-        }
-
-        messages = groupMessagesByRole(messages: messages)
-        messages = addMessageCache(
-            messages: messages,
-            cacheConfig: cacheConfig?.messagesTTL
-        )
-
-        input.messages = messages
-
-        if !system.isEmpty {
-            input.system = system
-
-            if let cachePoint = buildCachePoint(
-                ttl: cacheConfig?.systemPromptTTL
-            ) {
-                input.system?.append(
-                    .cachepoint(cachePoint)
-                )
-            }
-        }
-
-        if !additionalModelRequestFields.isEmpty {
-            input.additionalModelRequestFields = .init(
-                StringMapDocument(value: additionalModelRequestFields)
-            )
-        }
-
-        // if it is tool output turn
-        // forcing tool use will result in infinite tool calling loop
-        if isToolOutputTurn {
-            input.toolConfig?.toolChoice = .auto(.init())
-        }
-
-        return (input, toolNameMap)
     }
 
     /**
