@@ -18,7 +18,6 @@ import FoundationModels
 func basicExample(stream: Bool) async throws {
     let model = BedrockLanguageModel(
         modelId: ExampleConstants.modelId,
-        region: ExampleConstants.region,
         stream: stream
     )
     let session = LanguageModelSession(

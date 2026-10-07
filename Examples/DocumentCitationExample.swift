@@ -38,7 +38,7 @@ struct CitableTextDocument: DataAttachmentRepresentable {
     }
 }
 
-/// Document citations. Citations are returned in the response metadata as `[SegmentId: SegmentMetadata]`.
+/// Document citations. Citations are returned in the response metadata as `segmentMetadata.citations`
 ///
 /// See [CitationsConfig](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_CitationsConfig.html).
 ///
@@ -48,7 +48,6 @@ struct CitableTextDocument: DataAttachmentRepresentable {
 func documentCitationExample(stream: Bool) async throws {
     let model = BedrockLanguageModel(
         modelId: ExampleConstants.modelId,
-        region: ExampleConstants.region,
         stream: stream
     )
     let session = LanguageModelSession(model: model)
@@ -74,20 +73,23 @@ func documentCitationExample(stream: Bool) async throws {
     }
 
     if stream {
-        let responseStream = session.streamResponse(to: prompt)
-        for try await snapshot in responseStream {
-            print(snapshot.content)
+        // snapshots are cumulative: print only the newly generated part
+        var printed = ""
+        for try await snapshot in session.streamResponse(to: prompt) {
+            print(snapshot.content.dropFirst(printed.count), terminator: "")
+            printed = snapshot.content
         }
+        print()
     } else {
         let response = try await session.respond(to: prompt)
         print(response.content)
     }
 
-    switch session.transcript.last {
-    case .response(let response):
-        /// citation locations contained within the metadata ``ResponseMetadata/SegmentMetadata``
-        print(response.metadata)
-    default:
-        break
-    }
+    // citation locations are contained within the response metadata.
+    // `response.metadata` looks like:
+    //
+    // ["responseMetadata": {"segmentMetadata":[{"citations":[{"citations":[{"title":"Atlas-1","sourceContent":["Project Atlas is an internal initiative to automate invoice processing."],"location":{"documentIndex":0,"start":0,"type":"documentchar","end":71}}],"content":""}],"segmentId":"3CEC8C02-6BCC-4792-89D9-9B4F7D62D7F1"},{"segmentId":"DED48F8D-6AFC-4855-A1AB-5BF568B54972","citations":[{"content":"","citations":[{"title":"Atlas-2","location":{"start":0,"end":111,"documentIndex":1,"type":"documentchar"},"sourceContent":["In phase 1 of Atlas, paper invoices are scanned with OCR and registered in the accounting system automatically."]}]}]}],"metrics":{"latencyMs":2420}}]
+    //
+    // To extract it as `ResponseMetadata` and read each citation, see `ResponseMetadataExample.swift`.
+    try printResponseMetadata(of: session)
 }

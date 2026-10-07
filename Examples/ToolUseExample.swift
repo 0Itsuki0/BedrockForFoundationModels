@@ -22,7 +22,6 @@ struct WeatherTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
-        print("getWeather called with", arguments.city)
         // replace with a real weather lookup
         return "It is sunny and 22°C in \(arguments.city)."
     }
@@ -36,7 +35,6 @@ struct WeatherTool: Tool {
 func toolUseExample(stream: Bool) async throws {
     let model = BedrockLanguageModel(
         modelId: ExampleConstants.modelId,
-        region: ExampleConstants.region,
         stream: stream
     )
     let session = LanguageModelSession(
@@ -47,10 +45,13 @@ func toolUseExample(stream: Bool) async throws {
     let prompt = "What's the weather like in Tokyo?"
 
     if stream {
-        let responseStream = session.streamResponse(to: prompt)
-        for try await snapshot in responseStream {
-            print(snapshot.content)
+        // snapshots are cumulative: print only the newly generated part
+        var printed = ""
+        for try await snapshot in session.streamResponse(to: prompt) {
+            print(snapshot.content.dropFirst(printed.count), terminator: "")
+            printed = snapshot.content
         }
+        print()
     } else {
         let response = try await session.respond(to: prompt)
         print(response.content)

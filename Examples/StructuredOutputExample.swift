@@ -51,34 +51,35 @@ struct Recipe {
 func structuredOutputExample(stream: Bool) async throws {
     let model = BedrockLanguageModel(
         modelId: ExampleConstants.modelId,
-        region: ExampleConstants.region,
         stream: stream
     )
     let session = LanguageModelSession(model: model)
     let prompt = "Give me a simple recipe for pancakes."
 
+    let recipe: Recipe
     if stream {
         let responseStream = session.streamResponse(
             to: prompt,
             generating: Recipe.self
         )
         for try await snapshot in responseStream {
-            // partially generated recipe: properties are filled in as they arrive
-            print(snapshot.content)
+            // `snapshot.content` is a `Recipe.PartiallyGenerated` with the properties generated so far,
+            // for example, to update the UI progressively.
+            _ = snapshot.content
         }
-        let recipe = try await responseStream.collect().content
-        print(recipe)
+        recipe = try await responseStream.collect().content
     } else {
-        let recipe = try await session.respond(
+        recipe = try await session.respond(
             to: prompt,
             generating: Recipe.self
         ).content
-        print(recipe.name, recipe.difficulty)
-        for ingredient in recipe.ingredients {
-            print("-", ingredient.name, ingredient.amount)
-        }
-        for (index, step) in recipe.steps.enumerated() {
-            print("\(index + 1).", step)
-        }
+    }
+
+    print(recipe.name, recipe.difficulty)
+    for ingredient in recipe.ingredients {
+        print("-", ingredient.name, ingredient.amount)
+    }
+    for (index, step) in recipe.steps.enumerated() {
+        print("\(index + 1).", step)
     }
 }

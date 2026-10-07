@@ -9,6 +9,4 @@
 enum ExampleConstants {
     /// Model ID, inference profile ID, or ARN.
     static let modelId = "anthropic.claude-sonnet-5"
-    /// AWS region of the Bedrock service.
-    static let region = "us-east-1"
 }

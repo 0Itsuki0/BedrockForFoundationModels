@@ -1,5 +1,5 @@
 //
-//  CredentialConfigurationExample.swift
+//  AdvancedConfigurationExample.swift
 //  BedrockForFoundationModels
 //
 //  Created by Itsuki on 2026/10/07.
@@ -7,13 +7,12 @@
 
 import AWSSTS
 import BedrockForFoundationModels
-import Foundation
 import FoundationModels
 
 /// Placeholder values for the advanced configuration example. Replace them with your own.
 private enum AdvancedConfigConstants {
-    /// The shared config / SSO profile used to call STS.
-    static let profileName = "your-sso-profile"
+    /// AWS region of the Bedrock service.
+    static let region = "us-east-1"
     /// The role to assume for Bedrock access.
     static let roleArn = "arn:aws:iam::123456789012:role/YourBedrockRole"
     /// An application inference profile ARN (a model ID also works).
@@ -23,13 +22,22 @@ private enum AdvancedConfigConstants {
     static let guardrailVersion = "1"
 }
 
+/// Errors thrown by ``assumeRoleCredentials()``.
+private enum AssumeRoleError: Error {
+    /// STS returned no credentials.
+    case missingCredentials
+}
+
 /// Assumes a role with STS and returns temporary credentials.
+///
+/// The STS client itself uses the AWS SDK default chain
+/// (for example, `AWS_PROFILE` set in the environment).
 ///
 /// See [AssumeRole](https://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRole.html).
 private func assumeRoleCredentials() async throws
     -> BedrockModelConfiguration.AWSCredentialIdentity
 {
-    let client = try STSClient(region: ExampleConstants.region)
+    let client = try STSClient(region: AdvancedConfigConstants.region)
     let output = try await client.assumeRole(
         input: AssumeRoleInput(
             roleArn: AdvancedConfigConstants.roleArn,
@@ -41,7 +49,7 @@ private func assumeRoleCredentials() async throws
         let accessKeyId = credentials.accessKeyId,
         let secretAccessKey = credentials.secretAccessKey
     else {
-        throw NSError(domain: "Fail to get credential", code: 0)
+        throw AssumeRoleError.missingCredentials
     }
 
     return .init(
@@ -58,15 +66,12 @@ private func assumeRoleCredentials() async throws
 /// - Parameters:
 ///   - stream: Whether to use the ConverseStream API and `session.streamResponse`,
 ///     or the Converse API and `session.respond`.
-func credentialConfigurationExample(stream: Bool) async throws {
-    // the STS client resolves its own credentials from this profile
-    setenv("AWS_PROFILE", AdvancedConfigConstants.profileName, 1)
-
+func advancedConfigurationExample(stream: Bool) async throws {
     let credential = try await assumeRoleCredentials()
 
     let model = BedrockLanguageModel(
         modelId: AdvancedConfigConstants.inferenceProfileArn,
-        region: ExampleConstants.region,
+        region: AdvancedConfigConstants.region,
         credential: credential,
         // https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-use-converse-api.html
         guardrailConfig: .init(
@@ -82,6 +87,7 @@ func credentialConfigurationExample(stream: Bool) async throws {
             systemPromptTTL: .fiveMinutes,
             messagesTTL: .fiveMinutes
         ),
+        // `.optimized` for models that support latency-optimized inference
         // https://docs.aws.amazon.com/bedrock/latest/userguide/latency-optimized-inference.html
         performance: .standard,
         stream: stream
@@ -94,10 +100,13 @@ func credentialConfigurationExample(stream: Bool) async throws {
     let prompt = "Hello! What can you help me with?"
 
     if stream {
-        let responseStream = session.streamResponse(to: prompt)
-        for try await snapshot in responseStream {
-            print(snapshot.content)
+        // snapshots are cumulative: print only the newly generated part
+        var printed = ""
+        for try await snapshot in session.streamResponse(to: prompt) {
+            print(snapshot.content.dropFirst(printed.count), terminator: "")
+            printed = snapshot.content
         }
+        print()
     } else {
         let response = try await session.respond(to: prompt)
         print(response.content)

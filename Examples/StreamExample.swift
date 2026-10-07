@@ -17,7 +17,6 @@ import FoundationModels
 func streamExample(stream: Bool) async throws {
     let model = BedrockLanguageModel(
         modelId: ExampleConstants.modelId,
-        region: ExampleConstants.region,
         stream: stream
     )
     let session = LanguageModelSession(
@@ -29,11 +28,11 @@ func streamExample(stream: Bool) async throws {
         to: "Write a short poem about the ocean."
     )
 
+    // snapshots are cumulative: print only the newly generated part
+    var printed = ""
     for try await snapshot in responseStream {
-        // each snapshot contains the content generated so far
-        print(snapshot.content)
+        print(snapshot.content.dropFirst(printed.count), terminator: "")
+        printed = snapshot.content
     }
-
-    let response = try await responseStream.collect()
-    print("final:", response.content)
+    print()
 }
