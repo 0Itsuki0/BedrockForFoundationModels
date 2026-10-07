@@ -7,9 +7,12 @@
 
 import FoundationModels
 
-/// Metadata will be add to the response as [SegmentId: SegmentMetadata]
+/// Metadata attached to a response segment.
+///
+/// Metadata will be added to the response as `[SegmentId: SegmentMetadata]`.
 @Generable()
 public struct SegmentMetadata {
+    /// The citations for the segment.
     public var citations: [CitationContent] = []
 }
 

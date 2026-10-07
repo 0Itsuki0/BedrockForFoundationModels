@@ -331,20 +331,20 @@ nonisolated enum BedrockRequestBuilder {
         return config
     }
 
-    /**
-     * Ensure the last user message carries exactly one cache point.
-     *
-     * A cache point already present in the last user message is honored where it sits rather than
-     * replaced: a caller places one to mark where its reusable prefix ends, ahead of content that is
-     * rebuilt every call. Moving it to the end of the message would put that per-call content inside
-     * the cached prefix, so every request would write a new entry and none would ever read one.
-     *
-     * Cache points in earlier messages are still removed, so they cannot accumulate one per turn
-     * against the provider's cache-point budget.
-     *
-     * @param messages - List of messages to inject cache point into (modified in place)
-     * @param ttl - TTL for the injected cache point. Falsy leaves the Bedrock default.
-     */
+    /// Ensure the last user message carries exactly one cache point.
+    ///
+    /// A cache point already present in the last user message is honored where it sits rather than
+    /// replaced: a caller places one to mark where its reusable prefix ends, ahead of content that is
+    /// rebuilt every call. Moving it to the end of the message would put that per-call content inside
+    /// the cached prefix, so every request would write a new entry and none would ever read one.
+    ///
+    /// Cache points in earlier messages are still removed, so they cannot accumulate one per turn
+    /// against the provider's cache-point budget.
+    ///
+    /// - Parameters:
+    ///   - messages: List of messages to inject cache point into.
+    ///   - cacheConfig: TTL for the injected cache point. `nil` leaves the messages unchanged.
+    /// - Returns: The messages with the cache point injected.
     private static func addMessageCache(
         messages: [BedrockRuntimeClientTypes.Message],
         cacheConfig: BedrockRuntimeClientTypes.CacheTTL?

@@ -8,18 +8,36 @@
 import AWSBedrockRuntime
 import FoundationModels
 
+// MARK: - Data attachment metadata keys for documents
 nonisolated extension String {
+    /// Metadata key (`Bool`) to enable citations for a document attachment. Defaults to `false`.
+    ///
+    /// - SeeAlso: [CitationsConfig](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_CitationsConfig.html)
     public static let enableDocumentCitationKey = "enableCitation"
+    /// Metadata key (`String`) for the name of a document attachment. Ignored if the attachment has a label.
+    ///
+    /// - SeeAlso: [DocumentBlock](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_DocumentBlock.html)
     public static let documentNameKey = "name"
 }
 
+/// A citation that references source documents used to generate the response.
+///
+/// - SeeAlso: [Citation](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Citation.html)
 @Generable()
 public struct DocumentCitation {
 
+    /// The location of the cited content within a source.
+    ///
+    /// - SeeAlso: [CitationLocation](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_CitationLocation.html)
     @Generable()
     public enum CitationLocation: Sendable {
         /// The web URL that was cited for this reference.
-        case web(domain: String?, url: String?)
+        case web(
+            /// The domain that was cited.
+            domain: String?,
+            /// The URL that was cited.
+            url: String?
+        )
         /// The character-level location within the document where the cited content is found.
         case documentchar(
             /// The index of the document within the array of documents provided in the request.
@@ -58,6 +76,7 @@ public struct DocumentCitation {
             start: Int?
 
         )
+        /// A location type not known to this SDK version.
         case sdkUnknown(String)
 
         init?(_ location: BedrockRuntimeClientTypes.CitationLocation?) {
@@ -69,20 +88,20 @@ public struct DocumentCitation {
                 self = .web(domain: webLocation.domain, url: webLocation.url)
             case .documentchar(let documentCharLocation):
                 self = .documentchar(
-                    documentIndex: documentCharLocation.start,
+                    documentIndex: documentCharLocation.documentIndex,
                     end: documentCharLocation.end,
                     start: documentCharLocation.start
                 )
             case .documentpage(let documentPageLocation):
                 self = .documentpage(
-                    documentIndex: documentPageLocation.start,
+                    documentIndex: documentPageLocation.documentIndex,
                     end: documentPageLocation.end,
                     start: documentPageLocation.start
                 )
 
             case .documentchunk(let documentChunkLocation):
                 self = .documentchunk(
-                    documentIndex: documentChunkLocation.start,
+                    documentIndex: documentChunkLocation.documentIndex,
                     end: documentChunkLocation.end,
                     start: documentChunkLocation.start
                 )
@@ -122,10 +141,15 @@ public struct DocumentCitation {
     }
 }
 
+/// Generated content and the citations that support it.
+///
+/// - SeeAlso: [CitationsContentBlock](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_CitationsContentBlock.html)
 @Generable()
 public struct CitationContent {
+    /// The citations that support the content.
     public let citations: [DocumentCitation]
     /// The generated content that is supported by the associated citations.
-    /// NOTE:  Citations deltas obtained from streaming that ground already-streamed text carry no content of their own.
+    ///
+    /// - Note: Citations deltas obtained from streaming that ground already-streamed text carry no content of their own.
     public let content: String
 }
