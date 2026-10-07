@@ -16,7 +16,14 @@ import UniformTypeIdentifiers
 nonisolated enum BedrockRequestBuilder {
 
     enum Error: LocalizedError, Sendable {
-        case unsupportedDataAttachmentType
+        case unsupportedDataAttachmentType(UTType)
+        
+        var errorDescription: String? {
+            switch self {
+            case .unsupportedDataAttachmentType(let type):
+                "\(type) is not supported. Please try a different format."
+            }
+        }
     }
 
     static func buildConverseInputCommon(
@@ -38,7 +45,11 @@ nonisolated enum BedrockRequestBuilder {
         /// same reason: the schema always reaches the model.
 
         var input = ConverseInputCommon()
-        let inferenceConfig = buildInferenceConfig(from: request)
+
+        let inferenceConfig = buildInferenceConfig(
+            from: request,
+            stopSequences: executorConfiguration.stopSequences
+        )
         input.inferenceConfig = inferenceConfig.config
         var additionalModelRequestFields: [String: SmithyDocument] = [:]
 
@@ -52,6 +63,9 @@ nonisolated enum BedrockRequestBuilder {
         }
 
         input.outputConfig = try buildOutputConfig(from: request)
+
+        input.additionalModelResponseFieldPaths =
+            executorConfiguration.additionalResponseFieldPaths
 
         var toolNameMap: [ToolNameMap] = []
         if let config = try buildToolConfig(
@@ -74,7 +88,7 @@ nonisolated enum BedrockRequestBuilder {
             cacheConfig: cacheConfig,
             toolNameMap: toolNameMap
         )
-        
+
         input.messages = messages
 
         if !system.isEmpty {
@@ -194,7 +208,8 @@ nonisolated enum BedrockRequestBuilder {
     }
 
     private static func buildInferenceConfig(
-        from request: LanguageModelExecutorGenerationRequest
+        from request: LanguageModelExecutorGenerationRequest,
+        stopSequences: [String]?
     ) -> (
         config: BedrockRuntimeClientTypes.InferenceConfiguration,
         // map to be add to ConverseInput.additionalModelRequestFields
@@ -202,6 +217,8 @@ nonisolated enum BedrockRequestBuilder {
     ) {
         var configuration = BedrockRuntimeClientTypes.InferenceConfiguration()
         var additionalInferenceConfig: [String: SmithyDocument] = [:]
+
+        configuration.stopSequences = stopSequences
 
         let generationOptions = request.generationOptions
         configuration.maxTokens = generationOptions.maximumResponseTokens
@@ -293,7 +310,9 @@ nonisolated enum BedrockRequestBuilder {
     ) throws -> BedrockRuntimeClientTypes.OutputConfig {
         var config = BedrockRuntimeClientTypes.OutputConfig()
         config.effort =
-            request.contextOptions.reasoningLevel?.outputEffort?.rawValue
+            OutputEffort.fromReasoningLevel(
+                request.contextOptions.reasoningLevel
+            )?.rawValue
 
         // LanguageModelExecutorGenerationRequest.schema contains
         // the generation schema of the last respond/streamResponse call
@@ -651,7 +670,7 @@ nonisolated enum BedrockRequestBuilder {
             return .video(block)
         }
 
-        throw Error.unsupportedDataAttachmentType
+        throw Error.unsupportedDataAttachmentType(dataAttachment.contentType)
     }
 
     private static func contentBlock(
@@ -678,7 +697,7 @@ nonisolated enum BedrockRequestBuilder {
             return .audio(block)
         }
 
-        throw Error.unsupportedDataAttachmentType
+        throw Error.unsupportedDataAttachmentType(dataAttachment.contentType)
     }
 
     private static func documentBlock(
@@ -752,70 +771,5 @@ nonisolated enum BedrockRequestBuilder {
             format: audioFormat,
             source: .bytes(bytes)
         )
-    }
-
-}
-
-nonisolated extension BedrockRuntimeClientTypes.ContentBlock {
-    var isCachePoint: Bool {
-        if case .cachepoint(_) = self {
-            return true
-        }
-        return false
-    }
-}
-
-nonisolated extension String {
-    public static let enableDocumentCitationKey = "enableCitation"
-    public static let documentNameKey = "name"
-}
-
-nonisolated package struct ToolNameMap {
-    let original: String
-    let bedrock: String
-}
-
-// TODO: move request metadata key to be within the model configuration
-// LanguageModelExecutorGenerationRequest.metadata contains the newest prompt.metadata,
-// aka: the metadata of the last respond/streamResponse call
-public enum RequestMetadataKey: String {
-    /// true: ConverseStream. false: Converse
-    /// ex: metadata: [RequestMetadataKey.stream.rawValue: false]
-    case stream
-    /// A list of stop sequences String. A stop sequence is a sequence of characters that causes the model to stop generating the response.
-    /// ex: metadata: [RequestMetadataKey.stopSequences.rawValue: ["END"]]
-    case stopSequences
-
-    /// https://docs.aws.amazon.com/nova/latest/userguide/extended-thinking.html
-    // case extendedThinking
-}
-
-/// The effort level for the model to use when generating a response.
-/// Higher effort levels allow the model to spend more time reasoning before responding.
-/// Supported values are low, medium, high, xhigh, and max.
-/// When [extended thinking](https://docs.aws.amazon.com/nova/latest/userguide/extended-thinking.html) is disabled, the effort level is capped at high.
-/// Use effort high or below, or enable thinking to use higher effort levels.
-nonisolated enum OutputEffort: String {
-    case low
-    case medium
-    case high
-    case xhigh
-    case max
-}
-
-nonisolated extension ContextOptions.ReasoningLevel {
-    var outputEffort: OutputEffort? {
-        switch self {
-        case .light:
-            .low
-        case .moderate:
-            .medium
-        case .deep:
-            .high
-        case .custom(let string):
-            OutputEffort(rawValue: string)
-        @unknown default:
-            nil
-        }
     }
 }

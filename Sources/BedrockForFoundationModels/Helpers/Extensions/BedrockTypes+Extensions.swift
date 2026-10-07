@@ -98,5 +98,13 @@ nonisolated extension BedrockRuntimeClientTypes.DocumentFormat {
         default: false
         }
     }
+}
 
+nonisolated extension BedrockRuntimeClientTypes.ContentBlock {
+    var isCachePoint: Bool {
+        if case .cachepoint(_) = self {
+            return true
+        }
+        return false
+    }
 }

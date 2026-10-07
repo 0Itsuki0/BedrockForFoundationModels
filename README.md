@@ -18,3 +18,10 @@
 - prompt metadata
 - confirming API key override
 - message caching with documents added
+
+
+
+## Future
+
+- Extended Thinking: https://docs.aws.amazon.com/nova/latest/userguide/extended-thinking.html
+- file/image size check

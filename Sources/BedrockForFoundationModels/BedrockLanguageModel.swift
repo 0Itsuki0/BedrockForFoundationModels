@@ -17,9 +17,27 @@ import Foundation
 import FoundationModels
 import UniformTypeIdentifiers
 
+/// Bedrock as a Foundation Models server-side language model.
+///
+/// ```swift
+/// let model = BedrockLanguageModel(modelId: "anthropic.claude-sonnet-5")
+/// let session = LanguageModelSession(model: model)
+/// let response = try await session.respond(to: "...") // or session.streamResponse(to: "...")
+/// ```
+///
+/// For more examples, refer to Examples.
 public struct BedrockLanguageModel: LanguageModel {
+    public typealias Executor = BedrockExecutor
+
     public let executorConfiguration: BedrockExecutor.Configuration
 
+    /// Creates a BedrockLanguageModel from individual parameters.
+    ///
+    /// - Parameters:
+    ///    - add in
+    ///
+    /// - Note:
+    ///    - `stream` controls whether to use Converse API or Converse Stream API. It is independent of the session.respond or session.streamResponse usage.
     public init(
         modelId: String,
         region: String? = nil,
@@ -28,7 +46,10 @@ public struct BedrockLanguageModel: LanguageModel {
         guardrailConfig: BedrockModelConfiguration.GuardrailConfiguration? =
             nil,
         cacheConfig: BedrockModelConfiguration.CacheConfiguration? = nil,
-        performance: BedrockRuntimeClientTypes.PerformanceConfigLatency? = nil
+        performance: BedrockRuntimeClientTypes.PerformanceConfigLatency? = nil,
+        stopSequences: [String]? = nil,
+        stream: Bool = false,
+        additionalResponseFieldPaths: [String]? = nil
 
     ) {
         self.init(
@@ -39,16 +60,22 @@ public struct BedrockLanguageModel: LanguageModel {
                 credential: credential,
                 guardrailConfig: guardrailConfig,
                 cacheConfig: cacheConfig,
-                performance: performance
+                performance: performance,
+                stopSequences: stopSequences,
+                stream: stream,
+                additionalResponseFieldPaths: additionalResponseFieldPaths
             )
         )
     }
 
+    /// Creates a BedrockLanguageModel from executor configuration.
+    ///
+    /// - Parameters:
+    ///    - add in
+    ///
     public init(executorConfiguration: BedrockExecutor.Configuration) {
         self.executorConfiguration = executorConfiguration
     }
-
-    public typealias Executor = BedrockExecutor
 
     public var capabilities: LanguageModelCapabilities {
         return LanguageModelCapabilities([
@@ -89,6 +116,24 @@ public nonisolated struct BedrockModelConfiguration: Hashable, Sendable {
     public let cacheConfig: CacheConfiguration?
 
     public let performance: BedrockRuntimeClientTypes.PerformanceConfigLatency?
+
+    /// Array of sequences that will stop generation when encountered
+    public let stopSequences: [String]?
+
+    /**
+     * Whether or not to stream responses from the model.
+     *
+     * This will use the ConverseStream API instead of the Converse API.
+     *
+     * @see https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html
+     * @see https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ConverseStream.html
+     */
+    let stream: Bool
+
+    /**
+     * Additional response field paths to extract from the Bedrock response.
+     */
+    let additionalResponseFieldPaths: [String]?
 
     /// Configuration information for a guardrail that you use with the [Converse](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html) operation.
     public struct GuardrailConfiguration: Hashable, Sendable {
@@ -182,14 +227,25 @@ public nonisolated struct BedrockModelConfiguration: Hashable, Sendable {
         }
     }
 
+    /// Creates a Configuration for use with `BedrockLanguageModel`.
+    ///
+    /// - Parameters:
+    ///    - add in
+    ///
+    /// - Note:
+    ///    - `stream` controls whether to use Converse API or Converse Stream API. It is independent of the session.respond or session.streamResponse usage.
     public init(
         modelId: String,
-        region: String?,
-        apiKey: String?,
+        region: String? = nil,
+        apiKey: String? = nil,
         credential: AWSCredentialIdentity? = nil,
         guardrailConfig: GuardrailConfiguration? = nil,
         cacheConfig: CacheConfiguration? = nil,
-        performance: BedrockRuntimeClientTypes.PerformanceConfigLatency? = nil
+        performance: BedrockRuntimeClientTypes.PerformanceConfigLatency? = nil,
+        stopSequences: [String]? = nil,
+        stream: Bool = false,
+        additionalResponseFieldPaths: [String]? = nil
+
     ) {
         self.modelId = modelId
         self.region = region
@@ -198,6 +254,9 @@ public nonisolated struct BedrockModelConfiguration: Hashable, Sendable {
         self.guardrailConfig = guardrailConfig
         self.cacheConfig = cacheConfig
         self.performance = performance
+        self.stopSequences = stopSequences
+        self.stream = stream
+        self.additionalResponseFieldPaths = additionalResponseFieldPaths
     }
 }
 
@@ -215,17 +274,26 @@ public struct BedrockExecutor: LanguageModelExecutor {
         model: BedrockLanguageModel,
         streamingInto channel: LanguageModelExecutorGenerationChannel
     ) async throws {
-        print(request.metadata)
-        if let stream = request.metadata[RequestMetadataKey.stream.rawValue],
-            (try? stream.value(Bool.self)) == true
-        {
-            try await self.stream(
+        if model.executorConfiguration.stream {
+            try await self.respondWithConverseStream(
                 to: request,
                 model: model,
                 streamingInto: channel
             )
-            return
+        } else {
+            try await self.respondWithConverse(
+                to: request,
+                model: model,
+                streamingInto: channel
+            )
         }
+    }
+
+    public func respondWithConverse(
+        to request: LanguageModelExecutorGenerationRequest,
+        model: BedrockLanguageModel,
+        streamingInto channel: LanguageModelExecutorGenerationChannel
+    ) async throws {
 
         let (converseInput, toolNameMap) =
             try BedrockRequestBuilder.buildConverseInput(
@@ -233,11 +301,7 @@ public struct BedrockExecutor: LanguageModelExecutor {
                 model: model
             )
 
-        for (index, message) in (converseInput.messages ?? []).enumerated() {
-            print("--index \(index)--")
-            print(message.role as Any)
-            print(message.content as Any)
-        }
+        printMessages(messages: converseInput.messages)
 
         let runtimeConfig =
             try await BedrockClientConfigBuilder.buildClientConfig(model: model)
@@ -253,23 +317,20 @@ public struct BedrockExecutor: LanguageModelExecutor {
         )
     }
 
-    private func stream(
+    private func respondWithConverseStream(
         to request: LanguageModelExecutorGenerationRequest,
         model: BedrockLanguageModel,
         streamingInto channel: LanguageModelExecutorGenerationChannel
     ) async throws {
         print(#function)
+
         let (converseInput, toolNameMap) =
             try BedrockRequestBuilder.buildConverseStreamInput(
                 from: request,
                 model: model
             )
 
-        for (index, message) in (converseInput.messages ?? []).enumerated() {
-            print("--index \(index)--")
-            print(message.role as Any)
-            print(message.content as Any)
-        }
+        printMessages(messages: converseInput.messages)
 
         let runtimeConfig =
             try await BedrockClientConfigBuilder.buildClientConfig(model: model)
@@ -285,4 +346,17 @@ public struct BedrockExecutor: LanguageModelExecutor {
         )
     }
 
+    private func printMessages(messages: [BedrockRuntimeClientTypes.Message]?) {
+        #if DEBUG
+            print()
+            print("----Messages----")
+            for (index, message) in (messages ?? []).enumerated() {
+                print("--index \(index)--")
+                print(message.role as Any)
+                print(message.content as Any)
+            }
+            print("----End----")
+            print()
+        #endif
+    }
 }

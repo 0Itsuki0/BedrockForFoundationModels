@@ -8,6 +8,11 @@
 import AWSBedrockRuntime
 import FoundationModels
 
+nonisolated extension String {
+    public static let enableDocumentCitationKey = "enableCitation"
+    public static let documentNameKey = "name"
+}
+
 @Generable()
 public struct DocumentCitation {
 
