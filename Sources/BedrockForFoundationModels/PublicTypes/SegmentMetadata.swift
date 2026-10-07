@@ -11,3 +11,9 @@ import FoundationModels
 public struct SegmentMetadata {
     public var citations: [CitationContent] = []
 }
+
+extension SegmentMetadata {
+    var isEmpty: Bool {
+        return citations.isEmpty
+    }
+}

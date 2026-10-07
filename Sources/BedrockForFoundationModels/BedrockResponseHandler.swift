@@ -50,22 +50,28 @@ nonisolated enum BedrockResponseHandler {
         reasoningTokenUsed: Int,
         into channel: LanguageModelExecutorGenerationChannel
     ) async {
-        if let usage {
-            await channel.send(
-                .response(
-                    action: .updateUsage(
-                        input: .init(
-                            totalTokenCount: usage.inputTokens ?? 0,
-                            cachedTokenCount: usage.cacheReadInputTokens ?? 0
-                        ),
-                        output: .init(
-                            totalTokenCount: usage.totalTokens ?? 0,
-                            reasoningTokenCount: reasoningTokenUsed
-                        )
+        guard let usage else { return }
+
+        let cached = usage.cacheReadInputTokens ?? 0
+        let prompt = (usage.inputTokens ?? 0) + cached
+        let output = usage.outputTokens ?? 0
+
+        // NOTE: if cacheReadInputTokens > inputToken, the App will simply crash with BadExec
+        await channel.send(
+            .response(
+                action: .updateUsage(
+                    input: .init(
+                        totalTokenCount: prompt,  // NOTE: this value is not the inputToken but the sum of input + cache
+                        cachedTokenCount: cached
+                    ),
+                    output: .init(
+                        totalTokenCount: output,
+                        reasoningTokenCount: reasoningTokenUsed > output
+                            ? 0 : reasoningTokenUsed
                     )
                 )
             )
-        }
+        )
 
     }
 
@@ -200,7 +206,7 @@ nonisolated enum BedrockResponseHandler {
 
             await channel.send(
                 .response(
-                    action: .updateMetadata(metadataMap)
+                    action: .updateMetadata(removeEmptyMetadata(metadataMap))
                 )
             )
         case .sdkUnknown(let string):
@@ -249,5 +255,13 @@ nonisolated enum BedrockResponseHandler {
         case .toolUse, .endTurn, .stopSequence, .none, .sdkUnknown(_):
             break
         }
+    }
+
+    static func removeEmptyMetadata(_ metadata: [String: SegmentMetadata])
+        -> [String: SegmentMetadata]
+    {
+        return metadata.filter({
+            !$0.value.isEmpty
+        })
     }
 }

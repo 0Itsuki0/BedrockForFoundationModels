@@ -56,8 +56,19 @@ public struct BedrockLanguageModel: LanguageModel {
         ])
     }
 
-    public func supportsDataAttachmentType(_ type: UTType) async throws -> Bool {
-        <#code#>
+    public func supportsDataAttachmentType(_ type: UTType) async throws -> Bool
+    {
+        if BedrockRuntimeClientTypes.DocumentFormat.fromUTType(type) != nil {
+            return true
+        }
+
+        if BedrockRuntimeClientTypes.VideoFormat.fromUTType(type) != nil {
+            return true
+        }
+        if BedrockRuntimeClientTypes.AudioFormat.fromUTType(type) != nil {
+            return true
+        }
+        return false
     }
 }
 

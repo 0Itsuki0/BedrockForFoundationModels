@@ -669,8 +669,7 @@ nonisolated enum BedrockRequestBuilder {
     ) -> BedrockRuntimeClientTypes.DocumentBlock? {
         guard
             let documentFormat = BedrockRuntimeClientTypes.DocumentFormat
-                .fromUTType(contentType),
-            !documentFormat.isUnknown
+                .fromUTType(contentType), !documentFormat.isUnknown
         else { return nil }
 
         let enableCitation =
@@ -684,12 +683,22 @@ nonisolated enum BedrockRequestBuilder {
                 String.self,
                 forProperty: .documentNameKey
             ))
+        let source: BedrockRuntimeClientTypes.DocumentSource =
+            if documentFormat.isTextDocument {
+                if let string = String(data: bytes, encoding: .utf8) {
+                    .text(string)
+                } else {
+                    .bytes(bytes)
+                }
+            } else {
+                .bytes(bytes)
+            }
         return .init(
             citations: .init(enabled: enableCitation ?? false),
             context: metadata.jsonString,
             format: documentFormat,
             name: name,
-            source: .bytes(bytes)
+            source: source
         )
     }
 
@@ -700,8 +709,7 @@ nonisolated enum BedrockRequestBuilder {
 
         guard
             let videoFormat = BedrockRuntimeClientTypes.VideoFormat
-                .fromUTType(contentType),
-            !videoFormat.isUnknown
+                .fromUTType(contentType), !videoFormat.isUnknown
         else { return nil }
 
         return .init(
@@ -717,8 +725,7 @@ nonisolated enum BedrockRequestBuilder {
 
         guard
             let audioFormat = BedrockRuntimeClientTypes.AudioFormat
-                .fromUTType(contentType),
-            !audioFormat.isUnknown
+                .fromUTType(contentType), !audioFormat.isUnknown
         else { return nil }
 
         return .init(

@@ -10,10 +10,11 @@
 - basic caching (tool, system, message)
 - guardrails
 - basic streaming (with tool use)
+- text document citation
 
 
 ## Pending Task
-- document citation testing
+- bytes document citation
 - prompt metadata
 - confirming API key override
 - message caching with documents added

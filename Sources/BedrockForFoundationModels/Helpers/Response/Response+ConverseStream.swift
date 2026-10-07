@@ -46,6 +46,7 @@ nonisolated extension BedrockResponseHandler {
 
         func resetBlockState() {
             segmentId = UUID().uuidString
+            metadataMap[segmentId] = SegmentMetadata()
             resetToolState()
             resetReasoningState()
             resetCitationState()
@@ -71,10 +72,9 @@ nonisolated extension BedrockResponseHandler {
             case .messagestart(let event):
                 messageRole = event.role
 
+            // NOTE: contentblockstart event not called if there isn't a tool use
             case .contentblockstart(let event):
                 resetBlockState()
-
-                metadataMap[segmentId] = SegmentMetadata()
 
                 switch event.start {
                 case .tooluse(let toolUseStart):
@@ -146,7 +146,7 @@ nonisolated extension BedrockResponseHandler {
                     break
                 }
 
-            case .contentblockstop(let event):
+            case .contentblockstop(_):
                 if !reasoningSignature.isEmpty {
                     await channel.send(
                         .reasoning(
@@ -160,6 +160,9 @@ nonisolated extension BedrockResponseHandler {
 
                 if !citationDeltas.isEmpty {
                     let citations = groupCitationDeltas(citationDeltas)
+                    if metadataMap[segmentId] == nil {
+                        metadataMap[segmentId] = SegmentMetadata()
+                    }
                     metadataMap[segmentId]?.citations.append(
                         .init(
                             citations: citations.map({
@@ -176,6 +179,7 @@ nonisolated extension BedrockResponseHandler {
             case .messagestop(let event):
                 finalStopReason = event.stopReason
                 resetMessageState()
+
             case .metadata(let event):
                 metadata = event
 
@@ -196,12 +200,18 @@ nonisolated extension BedrockResponseHandler {
             totalTokenUsed: metadata?.usage?.totalTokens
         )
 
+        // Update metadata for all segments
+        await channel.send(
+            .response(
+                action: .updateMetadata(removeEmptyMetadata(metadataMap))
+            )
+        )
+
         await self.sendTokenUsage(
             metadata?.usage,
             reasoningTokenUsed: reasoningTokenUsed,
             into: channel
         )
-
     }
 
     private static func citation(
