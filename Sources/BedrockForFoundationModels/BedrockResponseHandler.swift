@@ -16,20 +16,41 @@ nonisolated enum BedrockResponseHandler {
         streamingInto channel: LanguageModelExecutorGenerationChannel,
         toolNameMap: [ToolNameMap]
     ) async throws {
-        try self.checkStopReason(response)
+        try self.checkStopReason(
+            response.stopReason,
+            guardrailTrace: response.trace?.guardrail,
+            totalTokenUsed: response.usage?.totalTokens
+        )
 
         guard let output = response.output else {
-            return
+            let explanation = "Converse API failed to provide an output."
+            throw FoundationModels.LanguageModelError.refusal(
+                .init(explanation: explanation, debugDescription: explanation)
+            )
         }
+
         var reasoningTokenUsed: Int = 0
-        try await self.streamResult(
+
+        try await self.sendOutput(
             output,
             into: channel,
             reasoningTokenUsed: &reasoningTokenUsed,
             toolNameMap: toolNameMap
         )
 
-        if let usage = response.usage {
+        await self.sendTokenUsage(
+            response.usage,
+            reasoningTokenUsed: reasoningTokenUsed,
+            into: channel
+        )
+    }
+
+    static func sendTokenUsage(
+        _ usage: BedrockRuntimeClientTypes.TokenUsage?,
+        reasoningTokenUsed: Int,
+        into channel: LanguageModelExecutorGenerationChannel
+    ) async {
+        if let usage {
             await channel.send(
                 .response(
                     action: .updateUsage(
@@ -63,9 +84,10 @@ nonisolated enum BedrockResponseHandler {
         .joined(separator: separator)
     }
 
+    /// stream converse output into channel
     /// event mapping reference:
     /// strands-ts/src/models/bedrock.ts: function _mapBedrockEventToSDKEvent
-    private static func streamResult(
+    private static func sendOutput(
         _ output: BedrockRuntimeClientTypes.ConverseOutput,
         into channel: LanguageModelExecutorGenerationChannel,
         reasoningTokenUsed: inout Int,
@@ -79,6 +101,7 @@ nonisolated enum BedrockResponseHandler {
             for contentBlock in message.content ?? [] {
                 // explicit Segment ID so that each contentBlock is its own segment (with its own metadata)
                 let segmentId = UUID().uuidString
+                metadataMap[segmentId] = SegmentMetadata()
 
                 switch contentBlock {
                 case .text(let text):
@@ -160,11 +183,16 @@ nonisolated enum BedrockResponseHandler {
                             )
                         )
                     )
-                    metadataMap[segmentId] = SegmentMetadata(
-                        citations: citation.citations?.compactMap {
-                            DocumentCitation($0)
-                        }
-                    )
+                    if let citations = citation.citations, !citations.isEmpty {
+                        metadataMap[segmentId]?.citations.append(
+                            .init(
+                                citations: citations.map({
+                                    DocumentCitation($0)
+                                }),
+                                content: text
+                            )
+                        )
+                    }
                 default:
                     continue
                 }
@@ -175,17 +203,24 @@ nonisolated enum BedrockResponseHandler {
                     action: .updateMetadata(metadataMap)
                 )
             )
-        case .sdkUnknown(_):
-            break
+        case .sdkUnknown(let string):
+            let explanation = "Received unknown result: \(string)"
+            throw FoundationModels.LanguageModelError.refusal(
+                .init(explanation: explanation, debugDescription: explanation)
+            )
         }
     }
 
-    private static func checkStopReason(_ output: ConverseOutput) throws {
-        switch output.stopReason {
+    static func checkStopReason(
+        _ stopReason: BedrockRuntimeClientTypes.StopReason?,
+        guardrailTrace: BedrockRuntimeClientTypes.GuardrailTraceAssessment?,
+        totalTokenUsed: Int?
+    ) throws {
+        switch stopReason {
         case .guardrailIntervened:
             throw FoundationModels.LanguageModelError.guardrailViolation(
                 .init(
-                    debugDescription: output.trace?.guardrail?.actionReason
+                    debugDescription: guardrailTrace?.actionReason
                         ?? ""
                 )
             )
@@ -193,7 +228,7 @@ nonisolated enum BedrockResponseHandler {
         case .malformedModelOutput, .contentFiltered, .malformedToolUse,
             .maxTokens:
             let explanation =
-                "Model stopped due to \(output.stopReason?.rawValue, default: "unknown reason")."
+                "Model stopped due to \(stopReason?.rawValue, default: "unknown reason")."
             throw FoundationModels.LanguageModelError.refusal(
                 .init(
                     explanation: explanation,
@@ -205,7 +240,7 @@ nonisolated enum BedrockResponseHandler {
             throw FoundationModels.LanguageModelError.contextSizeExceeded(
                 .init(
                     contextSize: 0,
-                    tokenCount: output.usage?.totalTokens ?? 0,
+                    tokenCount: totalTokenUsed ?? 0,
                     debugDescription:
                         "Model Context Window Exceeded. Context size is based on the model using. "
                 )
@@ -214,15 +249,5 @@ nonisolated enum BedrockResponseHandler {
         case .toolUse, .endTurn, .stopSequence, .none, .sdkUnknown(_):
             break
         }
-    }
-    
-    // TODO: - converse stream output handling
-    static func handleConverseStream(
-        response: ConverseOutput,
-        streamingInto channel: LanguageModelExecutorGenerationChannel,
-        toolNameMap: [ToolNameMap]
-    ) async throws {
-
-        
     }
 }

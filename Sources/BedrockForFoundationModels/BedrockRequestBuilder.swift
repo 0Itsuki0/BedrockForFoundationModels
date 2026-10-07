@@ -18,58 +18,9 @@ nonisolated enum BedrockRequestBuilder {
         case unsupportedDataAttachmentType
     }
 
-    /// Additional inference parameters that the model supports, beyond the base set of inference parameters that Converse and ConverseStream support in the inferenceConfig field. For more information, see [Model parameters](https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters.html).
-    //    public var additionalModelRequestFields: Smithy.Document?
-    //    /// Additional model parameters field paths to return in the response. Converse and ConverseStream return the requested fields as a JSON Pointer object in the additionalModelResponseFields field. The following is example JSON for additionalModelResponseFieldPaths. [ "/stop_sequence" ] For information about the JSON Pointer syntax, see the [Internet Engineering Task Force (IETF)](https://datatracker.ietf.org/doc/html/rfc6901) documentation. Converse and ConverseStream reject an empty JSON Pointer or incorrectly structured JSON Pointer with a 400 error code. if the JSON Pointer is valid, but the requested field is not in the model response, it is ignored by Converse.
-    //    public var additionalModelResponseFieldPaths: [Swift.String]?
-    //    /// Configuration information for a guardrail that you want to use in the request. If you include guardContent blocks in the content field in the messages field, the guardrail operates only on those messages. If you include no guardContent blocks, the guardrail operates on all messages in the request body and in any included prompt resource.
-    //    public var guardrailConfig: BedrockRuntimeClientTypes.GuardrailStreamConfiguration?
-    //    /// Inference parameters to pass to the model. Converse and ConverseStream support a base set of inference parameters. If you need to pass additional parameters that the model supports, use the additionalModelRequestFields request field.
-    //    public var inferenceConfig: BedrockRuntimeClientTypes.InferenceConfiguration?
-    //    /// The messages that you want to send to the model.
-    //    public var messages: [BedrockRuntimeClientTypes.Message]?
-    //    /// Specifies the model or throughput with which to run inference, or the prompt resource to use in inference. The value depends on the resource that you use:
-    //    ///
-    //    /// * If you use a base model, specify the model ID or its ARN. For a list of model IDs for base models, see [Amazon Bedrock base model IDs (on-demand throughput)](https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html#model-ids-arns) in the Amazon Bedrock User Guide.
-    //    ///
-    //    /// * If you use an inference profile, specify the inference profile ID or its ARN. For a list of inference profile IDs, see [Supported Regions and models for cross-region inference](https://docs.aws.amazon.com/bedrock/latest/userguide/cross-region-inference-support.html) in the Amazon Bedrock User Guide.
-    //    ///
-    //    /// * If you use a provisioned model, specify the ARN of the Provisioned Throughput. For more information, see [Run inference using a Provisioned Throughput](https://docs.aws.amazon.com/bedrock/latest/userguide/prov-thru-use.html) in the Amazon Bedrock User Guide.
-    //    ///
-    //    /// * If you use a custom model, first purchase Provisioned Throughput for it. Then specify the ARN of the resulting provisioned model. For more information, see [Use a custom model in Amazon Bedrock](https://docs.aws.amazon.com/bedrock/latest/userguide/model-customization-use.html) in the Amazon Bedrock User Guide.
-    //    ///
-    //    /// * To include a prompt that was defined in [Prompt management](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-management.html), specify the ARN of the prompt version to use.
-    //    ///
-    //    ///
-    //    /// The Converse API doesn't support [imported models](https://docs.aws.amazon.com/bedrock/latest/userguide/model-customization-import-model.html).
-    //    /// This member is required.
-    //    public var modelId: Swift.String?
-    //    /// Output configuration for a model response.
-    //    public var outputConfig: BedrockRuntimeClientTypes.OutputConfig?
-    //    /// Model performance settings for the request.
-    //    public var performanceConfig: BedrockRuntimeClientTypes.PerformanceConfiguration?
-    //    /// Contains a map of variables in a prompt from Prompt management to objects containing the values to fill in for them when running model invocation. This field is ignored if you don't specify a prompt resource in the modelId field.
-    //    public var promptVariables: [Swift.String: BedrockRuntimeClientTypes.PromptVariableValues]?
-    //    /// Key-value pairs that you can use to filter invocation logs.
-    //    public var requestMetadata: [Swift.String: Swift.String]?
-    //    /// Specifies the processing tier configuration used for serving the request.
-    //    public var serviceTier: BedrockRuntimeClientTypes.ServiceTier?
-    //    /// A prompt that provides instructions or context to the model about the task it should perform, or the persona it should adopt during the conversation.
-    //    public var system: [BedrockRuntimeClientTypes.SystemContentBlock]?
-    //    /// Configuration information for the tools that the model can use when generating a response. For information about models that support streaming tool use, see [Supported models and model features](https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference.html#conversation-inference-supported-models-features).
-    //    public var toolConfig: BedrockRuntimeClientTypes.ToolConfiguration?
-
-    // TODO: - converse stream
-    static func buildConverseStreamInput(
-        from request: LanguageModelExecutorGenerationRequest,
-        model: BedrockLanguageModel
-    ) throws -> (ConverseStreamInput, [ToolNameMap]) {
-        throw NSError(domain: "to be implemented", code: 0)
-    }
-    
     // TODO: - check image/document size
     static func checkAttachmentSize() {
-        
+
     }
 
     private static func buildInferenceConfig(
@@ -801,124 +752,9 @@ nonisolated extension String {
     public static let documentNameKey = "name"
 }
 
-
 nonisolated package struct ToolNameMap {
     let original: String
     let bedrock: String
-}
-
-@Generable()
-public struct DocumentCitation {
-
-    @Generable()
-    public enum CitationLocation: Sendable {
-        /// The web URL that was cited for this reference.
-        case web(domain: String?, url: String?)
-        /// The character-level location within the document where the cited content is found.
-        case documentchar(
-            /// The index of the document within the array of documents provided in the request.
-            documentIndex: Int?,
-            /// The ending character position of the cited content within the document.
-            end: Int?,
-            /// The starting character position of the cited content within the document.
-            start: Int?
-        )
-        /// The page-level location within the document where the cited content is found.
-        case documentpage(
-            /// The index of the document within the array of documents provided in the request.
-            documentIndex: Int?,
-            /// The ending page number of the cited content within the document.
-            end: Int?,
-            /// The starting page number of the cited content within the document.
-            start: Int?
-        )
-        /// The chunk-level location within the document where the cited content is found, typically used for documents that have been segmented into logical chunks.
-        case documentchunk(
-            /// The index of the document within the array of documents provided in the request.
-            documentIndex: Int?,
-            /// The ending chunk identifier or index of the cited content within the document.
-            end: Int?,
-            /// The starting chunk identifier or index of the cited content within the document.
-            start: Int?
-
-        )
-        /// The search result location where the cited content is found, including the search result index and block positions within the content array.
-        case searchresultlocation(
-            /// The ending position in the content array where the cited content ends.
-            end: Int?,
-            /// The index of the search result content block where the cited content is found.
-            searchResultIndex: Int?,
-            /// The starting position in the content array where the cited content begins.
-            start: Int?
-
-        )
-        case sdkUnknown(String)
-
-        init?(_ location: BedrockRuntimeClientTypes.CitationLocation?) {
-            guard let location else {
-                return nil
-            }
-            switch location {
-            case .web(let webLocation):
-                self = .web(domain: webLocation.domain, url: webLocation.url)
-            case .documentchar(let documentCharLocation):
-                self = .documentchar(
-                    documentIndex: documentCharLocation.start,
-                    end: documentCharLocation.end,
-                    start: documentCharLocation.start
-                )
-            case .documentpage(let documentPageLocation):
-                self = .documentpage(
-                    documentIndex: documentPageLocation.start,
-                    end: documentPageLocation.end,
-                    start: documentPageLocation.start
-                )
-
-            case .documentchunk(let documentChunkLocation):
-                self = .documentchunk(
-                    documentIndex: documentChunkLocation.start,
-                    end: documentChunkLocation.end,
-                    start: documentChunkLocation.start
-                )
-            case .searchresultlocation(let searchResultLocation):
-                self = .searchresultlocation(
-                    end: searchResultLocation.end,
-                    searchResultIndex: searchResultLocation.searchResultIndex,
-                    start: searchResultLocation.start
-                )
-            case .sdkUnknown(let string):
-                self = .sdkUnknown(string)
-            }
-        }
-    }
-
-    /// The precise location within the source document where the cited content can be found,
-    ///  including character positions, page numbers, or chunk identifiers.
-    public var location: CitationLocation?
-    /// The source from the original search result that provided the cited content.
-    public var source: String?
-    /// The specific content from the source document that was referenced or cited in the generated response.
-    public var sourceContent: [String]?
-    /// The title or identifier of the source document being cited.
-    public var title: String?
-
-    init(_ citation: BedrockRuntimeClientTypes.Citation) {
-        self.location = .init(citation.location)
-        self.source = citation.source
-        self.sourceContent = (citation.sourceContent ?? []).compactMap {
-            content in
-            switch content {
-            case .sdkUnknown(_): nil
-            case .text(let text): text
-            }
-        }
-        self.title = citation.title
-    }
-}
-
-@Generable()
-public struct SegmentMetadata {
-    public var citations: [DocumentCitation]?
 }
 
 // LanguageModelExecutorGenerationRequest.metadata contains the newest prompt.metadata,

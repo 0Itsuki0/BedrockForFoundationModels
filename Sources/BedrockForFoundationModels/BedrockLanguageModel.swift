@@ -192,6 +192,17 @@ public struct BedrockExecutor: LanguageModelExecutor {
         model: BedrockLanguageModel,
         streamingInto channel: LanguageModelExecutorGenerationChannel
     ) async throws {
+        print(request.metadata)
+        if let stream = request.metadata[RequestMetadataKey.stream.rawValue],
+            (try? stream.value(Bool.self)) == true
+        {
+            try await self.stream(
+                to: request,
+                model: model,
+                streamingInto: channel
+            )
+            return
+        }
 
         let (converseInput, toolNameMap) =
             try BedrockRequestBuilder.buildConverseInput(
@@ -218,4 +229,37 @@ public struct BedrockExecutor: LanguageModelExecutor {
             toolNameMap: toolNameMap
         )
     }
+
+    private func stream(
+        to request: LanguageModelExecutorGenerationRequest,
+        model: BedrockLanguageModel,
+        streamingInto channel: LanguageModelExecutorGenerationChannel
+    ) async throws {
+        print(#function)
+        let (converseInput, toolNameMap) =
+            try BedrockRequestBuilder.buildConverseStreamInput(
+                from: request,
+                model: model
+            )
+
+        for (index, message) in (converseInput.messages ?? []).enumerated() {
+            print("--index \(index)--")
+            print(message.role as Any)
+            print(message.content as Any)
+        }
+
+        let runtimeConfig =
+            try await BedrockClientConfigBuilder.buildClientConfig(model: model)
+
+        let client = BedrockRuntimeClient(config: runtimeConfig)
+
+        let response = try await client.converseStream(input: converseInput)
+
+        try await BedrockResponseHandler.handleConverseStream(
+            response: response,
+            streamingInto: channel,
+            toolNameMap: toolNameMap
+        )
+    }
+
 }
