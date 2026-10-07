@@ -138,3 +138,15 @@ nonisolated extension SmithyDocumentSupport {
         }
     }
 }
+
+// MARK: - SmithyDocument to GeneratedContent
+nonisolated extension SmithyDocumentSupport {
+    static func generatedContent(for document: SmithyDocument?) throws
+        -> GeneratedContent?
+    {
+        guard let document, let jsonString = try self.jsonString(for: document) else {
+            return nil
+        }
+        return try GeneratedContent(json: jsonString)
+    }
+}

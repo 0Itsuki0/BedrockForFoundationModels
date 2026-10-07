@@ -370,16 +370,25 @@ public struct BedrockExecutor: LanguageModelExecutor {
         model: BedrockLanguageModel,
         streamingInto channel: LanguageModelExecutorGenerationChannel
     ) async throws {
+        let runtimeConfig =
+            try await BedrockClientConfigBuilder.buildClientConfig(
+                config: model.executorConfiguration
+            )
+
+        let client = BedrockRuntimeClient(config: runtimeConfig)
+
         if model.executorConfiguration.stream {
             try await self.respondWithConverseStream(
                 to: request,
                 model: model,
+                client: client,
                 streamingInto: channel
             )
         } else {
             try await self.respondWithConverse(
                 to: request,
                 model: model,
+                client: client,
                 streamingInto: channel
             )
         }
@@ -390,6 +399,7 @@ public struct BedrockExecutor: LanguageModelExecutor {
     public func respondWithConverse(
         to request: LanguageModelExecutorGenerationRequest,
         model: BedrockLanguageModel,
+        client: BedrockRuntimeClient,
         streamingInto channel: LanguageModelExecutorGenerationChannel
     ) async throws {
 
@@ -400,11 +410,6 @@ public struct BedrockExecutor: LanguageModelExecutor {
             )
 
         printMessages(messages: converseInput.messages)
-
-        let runtimeConfig =
-            try await BedrockClientConfigBuilder.buildClientConfig(model: model)
-
-        let client = BedrockRuntimeClient(config: runtimeConfig)
 
         let response = try await client.converse(input: converseInput)
 
@@ -418,6 +423,7 @@ public struct BedrockExecutor: LanguageModelExecutor {
     private func respondWithConverseStream(
         to request: LanguageModelExecutorGenerationRequest,
         model: BedrockLanguageModel,
+        client: BedrockRuntimeClient,
         streamingInto channel: LanguageModelExecutorGenerationChannel
     ) async throws {
         print(#function)
@@ -429,11 +435,6 @@ public struct BedrockExecutor: LanguageModelExecutor {
             )
 
         printMessages(messages: converseInput.messages)
-
-        let runtimeConfig =
-            try await BedrockClientConfigBuilder.buildClientConfig(model: model)
-
-        let client = BedrockRuntimeClient(config: runtimeConfig)
 
         let response = try await client.converseStream(input: converseInput)
 

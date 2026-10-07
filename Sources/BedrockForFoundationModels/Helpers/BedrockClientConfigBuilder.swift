@@ -10,10 +10,8 @@ import SmithyIdentity
 
 nonisolated enum BedrockClientConfigBuilder {
     static func buildClientConfig(
-        model: BedrockLanguageModel
+        config: BedrockModelConfiguration
     ) async throws -> BedrockRuntimeClient.BedrockRuntimeClientConfig {
-        let config = model.executorConfiguration
-
         var credentialResolver:
             any SmithyIdentity.AWSCredentialIdentityResolver? = nil
 

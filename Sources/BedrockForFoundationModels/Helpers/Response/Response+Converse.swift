@@ -28,13 +28,20 @@ nonisolated extension BedrockResponseHandler {
             )
         }
 
-        var reasoningTokenUsed: Int = 0
-
-        try await self.sendOutput(
+        let (reasoningTokenUsed, segmentMetadata) = try await self.sendOutput(
             output,
             into: channel,
-            reasoningTokenUsed: &reasoningTokenUsed,
             toolNameMap: toolNameMap
+        )
+
+        await self.sendMetadata(
+            segmentMetadata: segmentMetadata,
+            additionalModelResponseFields: response
+                .additionalModelResponseFields,
+            metrics: ResponseMetrics.fromConverseMetrics(
+                response.metrics
+            ),
+            into: channel
         )
 
         await self.sendTokenUsage(
@@ -50,18 +57,20 @@ nonisolated extension BedrockResponseHandler {
     private static func sendOutput(
         _ output: BedrockRuntimeClientTypes.ConverseOutput,
         into channel: LanguageModelExecutorGenerationChannel,
-        reasoningTokenUsed: inout Int,
         toolNameMap: [ToolNameMap]
-    ) async throws {
+    ) async throws -> (
+        reasoningTokenUsed: Int, segmentMetadata: [SegmentMetadata]
+    ) {
+        var reasoningTokenUsed: Int = 0
+        var metadataMap: [String: SegmentMetadata] = [:]
 
         switch output {
         case .message(let message):
-            var metadataMap: [String: SegmentMetadata] = [:]
 
             for contentBlock in message.content ?? [] {
                 // explicit Segment ID so that each contentBlock is its own segment (with its own metadata)
                 let segmentId = UUID().uuidString
-                metadataMap[segmentId] = SegmentMetadata()
+                metadataMap[segmentId] = SegmentMetadata(segmentId: segmentId)
 
                 switch contentBlock {
                 case .text(let text):
@@ -145,7 +154,9 @@ nonisolated extension BedrockResponseHandler {
                     )
                     if let citations = citation.citations, !citations.isEmpty {
                         if metadataMap[segmentId] == nil {
-                            metadataMap[segmentId] = SegmentMetadata()
+                            metadataMap[segmentId] = SegmentMetadata(
+                                segmentId: segmentId
+                            )
                         }
                         metadataMap[segmentId]?.citations.append(
                             .init(
@@ -161,15 +172,14 @@ nonisolated extension BedrockResponseHandler {
                 }
             }
 
-            // Update metadata for all segments
-            await sendMetadata(metadataMap, into: channel)
-
         case .sdkUnknown(let string):
             let explanation = "Received unknown result: \(string)"
             throw FoundationModels.LanguageModelError.refusal(
                 .init(explanation: explanation, debugDescription: explanation)
             )
         }
+
+        return (reasoningTokenUsed, metadataMap.map(\.value))
     }
 
     private static func text(

@@ -85,7 +85,7 @@ func documentCitationExample(stream: Bool) async throws {
 
     switch session.transcript.last {
     case .response(let response):
-        // citation locations contained within the metadata
+        /// citation locations contained within the metadata ``ResponseMetadata/SegmentMetadata``
         print(response.metadata)
     default:
         break

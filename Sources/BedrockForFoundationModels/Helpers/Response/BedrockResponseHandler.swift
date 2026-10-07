@@ -8,6 +8,7 @@
 import AWSBedrockRuntime
 import Foundation
 import FoundationModels
+import Smithy
 
 nonisolated enum BedrockResponseHandler {
 
@@ -82,22 +83,25 @@ nonisolated enum BedrockResponseHandler {
     }
 
     static func sendMetadata(
-        _ metadata: [String: SegmentMetadata],
+        segmentMetadata: [SegmentMetadata],
+        additionalModelResponseFields: Smithy.Document?,
+        metrics: ResponseMetrics?,
         into channel: LanguageModelExecutorGenerationChannel
     ) async {
+        let metadata = ResponseMetadata(
+            segmentMetadata: segmentMetadata.filter({ !$0.isEmpty }),
+            additionalModelResponseFields:
+                try? SmithyDocumentSupport.generatedContent(
+                    for: additionalModelResponseFields
+                ),
+            metrics: metrics
+        )
         await channel.send(
             .response(
-                action: .updateMetadata(removeEmptyMetadata(metadata))
+                action: .updateMetadata(
+                    [ResponseMetadata.metadataKey: metadata]
+                )
             )
         )
     }
-
-    private static func removeEmptyMetadata(_ metadata: [String: SegmentMetadata])
-        -> [String: SegmentMetadata]
-    {
-        return metadata.filter({
-            !$0.value.isEmpty
-        })
-    }
-
 }

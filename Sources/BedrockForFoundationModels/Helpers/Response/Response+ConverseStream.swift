@@ -8,6 +8,7 @@
 import AWSBedrockRuntime
 import Foundation
 import FoundationModels
+import Smithy
 
 nonisolated extension BedrockResponseHandler {
 
@@ -37,6 +38,7 @@ nonisolated extension BedrockResponseHandler {
         var reasoningSignature: String = ""
 
         var finalStopReason: BedrockRuntimeClientTypes.StopReason? = nil
+        var additionalModelResponseFields: Smithy.Document? = nil
         var metadata: BedrockRuntimeClientTypes.ConverseStreamMetadataEvent? =
             nil
 
@@ -46,7 +48,7 @@ nonisolated extension BedrockResponseHandler {
 
         func resetBlockState() {
             segmentId = UUID().uuidString
-            metadataMap[segmentId] = SegmentMetadata()
+            metadataMap[segmentId] = SegmentMetadata(segmentId: segmentId)
             resetToolState()
             resetReasoningState()
             resetCitationState()
@@ -161,7 +163,9 @@ nonisolated extension BedrockResponseHandler {
                 if !citationDeltas.isEmpty {
                     let citations = groupCitationDeltas(citationDeltas)
                     if metadataMap[segmentId] == nil {
-                        metadataMap[segmentId] = SegmentMetadata()
+                        metadataMap[segmentId] = SegmentMetadata(
+                            segmentId: segmentId
+                        )
                     }
                     metadataMap[segmentId]?.citations.append(
                         .init(
@@ -177,6 +181,8 @@ nonisolated extension BedrockResponseHandler {
                 resetBlockState()
 
             case .messagestop(let event):
+                additionalModelResponseFields =
+                    event.additionalModelResponseFields
                 finalStopReason = event.stopReason
                 resetMessageState()
 
@@ -201,7 +207,14 @@ nonisolated extension BedrockResponseHandler {
         )
 
         // Update metadata for all segments
-        await sendMetadata(metadataMap, into: channel)
+        await sendMetadata(
+            segmentMetadata: metadataMap.map(\.value),
+            additionalModelResponseFields: additionalModelResponseFields,
+            metrics: ResponseMetrics.fromConverseStreamMetrics(
+                metadata?.metrics
+            ),
+            into: channel
+        )
 
         await self.sendTokenUsage(
             metadata?.usage,
