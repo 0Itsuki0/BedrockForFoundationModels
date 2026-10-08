@@ -1,39 +1,10 @@
-# (WIP) BedrockForFoundationModels
-
-
-
-## (Partially) Confirmed
-- multi-turn converse
-- tool use (with argument, string output)
-- structured output
-- override SigV4 with the provided access key / session token
-- basic caching (tool, system, message)
-- guardrails
-- basic streaming (with tool use)
-- text document citation
-
-
-## Pending Task
-- bytes document citation
-- prompt metadata
-- confirming API key override
-- message caching with documents added
-
-
-
-## Future
-
-- Extended Thinking: https://docs.aws.amazon.com/nova/latest/userguide/extended-thinking.html
-- file/image size check
-
-
----
+# BedrockForFoundationModels
 
 Use [Amazon Bedrock](https://docs.aws.amazon.com/bedrock/latest/userguide/what-is-bedrock.html) as a server-side language model through Apple's [Foundation Models](https://developer.apple.com/documentation/foundationmodels) framework. The package conforms Bedrock to the framework's `LanguageModel` protocol, so you drive it with the same `LanguageModelSession` API you use for Apple's on-device model — `respond(to:)`, streaming, guided generation, and tool calling all work the same way.
 
 Requests are sent through the Bedrock [Converse](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html) or [ConverseStream](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ConverseStream.html) API.
 
-> **Beta.** This package targets the Foundation Models server-side language model API introduced in the OS 27 betas. APIs may change before general availability.
+> **Beta.** This package targets the Foundation Models server-side language model API introduced in the OS 27.2 betas. APIs may change before general availability.
 
 ## Contents
 
@@ -393,3 +364,10 @@ See [`ResponseMetadataExample.swift`](Examples/ResponseMetadataExample.swift).
 ## What this package provides
 
 The public surface is Apple's Foundation Models provider conformance plus the configuration types that reach it — `BedrockLanguageModel`, `BedrockExecutor`, `BedrockModelConfiguration`, and the response metadata types (`ResponseMetadata`, `SegmentMetadata`, `CitationContent`, `DocumentCitation`). It is not a general-purpose Bedrock Runtime client.
+
+
+## Future
+
+- Extended Thinking: https://docs.aws.amazon.com/nova/latest/userguide/extended-thinking.html
+- file/image size check 
+- image auto compression

@@ -118,14 +118,14 @@ public struct DocumentCitation {
     }
 
     /// The precise location within the source document where the cited content can be found,
-    ///  including character positions, page numbers, or chunk identifiers.
-    public var location: CitationLocation?
+    /// including character positions, page numbers, or chunk identifiers.
+    public let location: CitationLocation?
     /// The source from the original search result that provided the cited content.
-    public var source: String?
+    public let source: String?
     /// The specific content from the source document that was referenced or cited in the generated response.
-    public var sourceContent: [String]?
+    public let sourceContent: [String]?
     /// The title or identifier of the source document being cited.
-    public var title: String?
+    public let title: String?
 
     init(_ citation: BedrockRuntimeClientTypes.Citation) {
         self.location = .init(citation.location)
